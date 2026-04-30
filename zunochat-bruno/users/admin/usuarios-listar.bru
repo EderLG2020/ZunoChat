@@ -1,0 +1,30 @@
+meta {
+  name: GET /admin/usuarios
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{base_url}}/admin/usuarios
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+docs {
+  Respuesta
+  Errores
+  HTTP 200
+  "Lista de usuarios (ADMIN / SUPERADMIN)"
+  
+  
+  Respuesta
+  Errores
+  401
+  Token ausente o inválido
+  403
+  No tiene usuarios:ver
+}

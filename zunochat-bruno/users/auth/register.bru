@@ -1,0 +1,56 @@
+meta {
+  name: POST /auth/register
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{base_url}}/auth/register
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "dni": "12345678",
+    "username": "juan_perez",
+    "email": "juan@example.com",
+    "password": "Clave123!"
+  }
+}
+
+docs {
+  {
+    "dni":      "12345678",
+    "username": "juan_perez",
+    "email":    "juan@example.com",
+    "password": "Clave123!"
+  }
+  
+  
+  
+  
+  Campo	Tipo		Regla
+  dni	string	requerido	Exactamente 8 dígitos numéricos
+  username	string	requerido	4–30 chars. Letras, números, punto, guión bajo. No puede empezar/terminar con punto o guión bajo
+  email	string	requerido	Formato de correo válido, máx 120 chars
+  password	string	requerido	8–64 chars. Al menos 1 mayúscula, 1 minúscula, 1 número, 1 especial (@$!%*?&_#^-). Sin espacios
+  
+  
+  HTTP 201
+  "Usuario registrado. Código OTP: 847291 (válido 10 min)"
+  En producción el OTP llega por correo, no en la respuesta. El usuario queda en estado PENDING_VERIFICATION hasta verificar el OTP.
+  
+  
+  400
+  Campos inválidos — ver mapa de errores
+  409
+  DNI, username o email ya registrado
+  {
+    "status": 400,
+    "errors": {
+      "password": "La contraseña debe tener entre 8 y 64 chars...",
+      "dni": "El DNI debe tener exactamente 8 dígitos"
+    }
+  }
+}

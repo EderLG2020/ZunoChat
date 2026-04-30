@@ -1,0 +1,27 @@
+meta {
+  name: PATCH /admin/usuarios/{id}/ban
+  type: http
+  seq: 6
+}
+
+patch {
+  url: {{base_url}}/admin/usuarios/1/ban
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+docs {
+  Respuesta
+  Errores
+  HTTP 200
+  "Usuario 1 baneado"
+  Reemplaza {id} por el ID numérico del usuario. Ej: /admin/usuarios/42/ban
+  
+  
+  403
+  No tiene usuarios:bannear
+}

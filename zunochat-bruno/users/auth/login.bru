@@ -1,0 +1,64 @@
+meta {
+  name: POST /auth/login
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{base_url}}/auth/login
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "identifier": "juan_perez",
+    "password": "Clave123!"
+  }
+  
+}
+
+script:post-response {
+  if (res.status === 200) {
+    bru.setVar("token", res.body.token);
+  }
+}
+
+docs {
+  {
+    "identifier": "juan_perez",
+    "password":   "Clave123!"
+  }
+  identifier puede ser el username o el email del usuario.
+  
+  
+  
+  Campo	Tipo		Regla
+  identifier	string	requerido	Username o email
+  password	string	requerido	Contraseña del usuario
+  
+  
+  
+  Body
+  Campos
+  Respuesta
+  Errores
+  {
+    "token":       "eyJhbGciOiJIUzI1NiJ9...",
+    "tokenType":   "Bearer",
+    "username":    "juan_perez",
+    "email":       "juan@example.com",
+    "role":        "ADMIN",
+    "permissions": [
+      "profile:ver", "profile:editar",
+      "dashboard:ver", "dashboard:editar",
+      "usuarios:ver", "usuarios:bannear", "usuarios:activar"
+    ]
+  }
+  
+  
+  401
+  Credenciales incorrectas
+  403
+  Cuenta baneada / pendiente de verificación / inactiva
+}

@@ -1,0 +1,28 @@
+meta {
+  name: GET /admin/dashboard
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{base_url}}/admin/dashboard
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+docs {
+  Respuesta
+  Errores
+  HTTP 200
+  "Dashboard visible para ADMIN y SUPERADMIN"
+  Permiso requerido: dashboard:ver — disponible en roles ADMIN y SUPERADMIN
+  
+  401
+  Token ausente o inválido
+  403
+  No tiene el permiso dashboard:ver (rol USER)
+}

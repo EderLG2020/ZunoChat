@@ -1,0 +1,66 @@
+meta {
+  name: POST /auth/verify-otp
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{base_url}}/auth/verify-otp
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "email": "juan@example.com",
+    "otpCode": "174101"
+  }
+  
+}
+
+script:post-response {
+  if (res.status === 200) {
+    bru.setVar("token", res.body.token);
+  }
+}
+
+docs {
+  {
+    "email":   "juan@example.com",
+    "otpCode": "847291"
+  }
+  
+  
+  Body
+  Campos
+  Respuesta
+  Errores
+  Campo	Tipo		Regla
+  email	string	requerido	Correo con el que se registró
+  otpCode	string	requerido	Exactamente 6 dígitos numéricos. Válido por 10 minutos
+  
+  
+  
+  {
+    "token":       "eyJhbGciOiJIUzI1NiJ9...",
+    "tokenType":   "Bearer",
+    "username":    "juan_perez",
+    "email":       "juan@example.com",
+    "role":        "USER",
+    "permissions": [
+      "profile:ver",
+      "profile:editar",
+      "chat:enviar",
+      "chat:ver"
+    ]
+  }
+  Guardar el token. Se usa en todas las peticiones protegidas como: Authorization: Bearer <token>
+  
+  
+  
+  
+  400
+  OTP inválido o expirado / cuenta ya verificada
+  404
+  Usuario no encontrado
+}

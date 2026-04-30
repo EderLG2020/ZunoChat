@@ -1,33 +1,90 @@
 package com.example.backend.common.service;
 
-import com.example.backend.common.util.DateUtils;
 import com.example.backend.module.usermanagement.domain.UserModel;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import javax.crypto.SecretKey;
+import java.nio.charset.StandardCharsets;
 import java.util.Date;
+import java.util.List;
 
+/**
+ * Servicio JWT.
+ *
+ * El token generado contiene:
+ * - sub       → username
+ * - role      → nombre del rol (USER / ADMIN / SUPERADMIN)
+ * - permissions → lista de permisos granulares ["dashboard:editar", ...]
+ * - iat / exp
+ *
+ * En los controllers se usa así:
+ *   @PreAuthorize("hasAuthority('dashboard:editar')")
+ *
+ * La clave secreta se lee de application.properties (jwt.secret).
+ * Debe tener al menos 32 caracteres para HS256.
+ */
 @Service
 public class JwtService {
 
-    private final String SECRET = "clave_secreta";
+    /** Expiración del token: 24 horas */
+    private static final long EXPIRATION_MS = 86_400_000L;
+
+    private final SecretKey secretKey;
+
+    public JwtService(@Value("${jwt.secret}") String secret) {
+        // Keys.hmacShaKeyFor exige mínimo 256 bits para HS256
+        this.secretKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+    }
+
+    // ─── Generación ──────────────────────────────────────────────────────────
 
     public String generateToken(UserModel user) {
+        List<String> permissions = user.getRole().getPermissions();
+
         return Jwts.builder()
                 .setSubject(user.getUsername())
                 .claim("role", user.getRole().name())
-                .setIssuedAt(DateUtils.now())
-                .setExpiration(new Date(System.currentTimeMillis() + 86400000))
-                .signWith(SignatureAlgorithm.HS256, SECRET)
+                .claim("permissions", permissions)   // ← permisos granulares
+                .claim("userId", user.getId())
+                .setIssuedAt(new Date())
+                .setExpiration(new Date(System.currentTimeMillis() + EXPIRATION_MS))
+                .signWith(secretKey, SignatureAlgorithm.HS256)
                 .compact();
     }
 
+    // ─── Extracción ──────────────────────────────────────────────────────────
+
     public Claims extractClaims(String token) {
-        return Jwts.parser()
-                .setSigningKey(SECRET)
+        return Jwts.parserBuilder()
+                .setSigningKey(secretKey)
+                .build()
                 .parseClaimsJws(token)
                 .getBody();
+    }
+
+    public String extractUsername(String token) {
+        return extractClaims(token).getSubject();
+    }
+
+    public String extractRole(String token) {
+        return extractClaims(token).get("role", String.class);
+    }
+
+    @SuppressWarnings("unchecked")
+    public List<String> extractPermissions(String token) {
+        return extractClaims(token).get("permissions", List.class);
+    }
+
+    public boolean isTokenExpired(String token) {
+        return extractClaims(token).getExpiration().before(new Date());
+    }
+
+    public boolean isTokenValid(String token, String expectedUsername) {
+        return extractUsername(token).equals(expectedUsername) && !isTokenExpired(token);
     }
 }

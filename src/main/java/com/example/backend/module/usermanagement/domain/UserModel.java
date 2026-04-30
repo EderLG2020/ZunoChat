@@ -1,29 +1,98 @@
 package com.example.backend.module.usermanagement.domain;
 
 import com.example.backend.common.enums.Role;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.EnumType;
-import lombok.Getter;
-import lombok.Setter;
+import com.example.backend.common.enums.UserStatus;
+import jakarta.persistence.*;
+import lombok.*;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
 
+import java.time.LocalDateTime;
+
+/**
+ * Entidad principal de usuario.
+ * Incluye campos para autenticación, estado, auditoría y verificación OTP.
+ */
 @Entity
+@Table(
+    name = "users",
+    uniqueConstraints = {
+        @UniqueConstraint(name = "uk_users_username", columnNames = "username"),
+        @UniqueConstraint(name = "uk_users_email",    columnNames = "email"),
+        @UniqueConstraint(name = "uk_users_dni",      columnNames = "dni")
+    }
+)
 @Getter
 @Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class UserModel {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    // ─── Datos de identidad ───────────────────────────────────────────────────
+
+    @Column(nullable = false, length = 20)
+    private String dni;
+
+    /** Nombre de usuario único, visible públicamente */
+    @Column(nullable = false, length = 50)
     private String username;
+
+    @Column(nullable = false, length = 120)
+    private String email;
+
+    /** Contraseña encriptada con BCrypt */
+    @Column(nullable = false)
     private String password;
 
+    // ─── Seguridad / Roles ───────────────────────────────────────────────────
+
     @Enumerated(EnumType.STRING)
-    private Role role;
+    @Column(nullable = false, length = 20)
+    @Builder.Default
+    private Role role = Role.USER;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 30)
+    @Builder.Default
+    private UserStatus status = UserStatus.PENDING_VERIFICATION;
 
+    // ─── Verificación OTP ────────────────────────────────────────────────────
+
+    /** Código OTP de 6 dígitos (se borra tras verificar) */
+    @Column(length = 6)
+    private String otpCode;
+
+    /** Fecha límite para usar el OTP */
+    private LocalDateTime otpExpiration;
+
+    // ─── Auditoría ───────────────────────────────────────────────────────────
+
+    @CreationTimestamp
+    @Column(updatable = false)
+    private LocalDateTime createdAt;
+
+    @UpdateTimestamp
+    private LocalDateTime updatedAt;
+
+    /** Usuario que realizó el último ban/cambio de estado (para trazabilidad) */
+    private Long updatedBy;
+
+    // ─── Helpers ─────────────────────────────────────────────────────────────
+
+    public boolean isActive() {
+        return this.status == UserStatus.ACTIVE;
+    }
+
+    public boolean isBanned() {
+        return this.status == UserStatus.BANNED;
+    }
+
+    public boolean isPendingVerification() {
+        return this.status == UserStatus.PENDING_VERIFICATION;
+    }
 }

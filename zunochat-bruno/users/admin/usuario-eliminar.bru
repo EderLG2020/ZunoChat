@@ -1,0 +1,28 @@
+meta {
+  name: DELETE /admin/usuarios/{id}
+  type: http
+  seq: 7
+}
+
+delete {
+  url: {{base_url}}/admin/usuarios/1
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+docs {
+  Respuesta
+  Errores
+  HTTP 200
+  "Usuario 1 eliminado (solo SUPERADMIN)"
+  Solo disponible para SUPERADMIN. Cualquier otro rol recibe 403.
+  
+  
+  
+  403
+  No tiene usuarios:eliminar (solo SUPERADMIN tiene este permiso)
+}

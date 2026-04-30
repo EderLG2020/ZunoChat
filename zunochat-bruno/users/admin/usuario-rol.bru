@@ -1,0 +1,37 @@
+meta {
+  name: PATCH /admin/usuarios/{id}/rol
+  type: http
+  seq: 8
+}
+
+patch {
+  url: {{base_url}}/admin/usuarios/1/rol
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "role": "ADMIN"
+  }
+}
+
+docs {
+  {
+    "role": "ADMIN"
+  }
+  Valores válidos: USER · ADMIN · SUPERADMIN
+  
+  
+  
+  HTTP 200
+  "Rol asignado (solo SUPERADMIN)"
+  
+  
+  403
+  No tiene roles:asignar (solo SUPERADMIN)
+}
