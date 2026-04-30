@@ -1,6 +1,10 @@
 package com.example.backend.module.usermanagement.application;
 
+import com.example.backend.common.config.domain.AppConfigServiceDomain;
+import com.example.backend.common.email.EmailService;
 import com.example.backend.common.enums.UserStatus;
+import com.example.backend.common.exception.AppException;
+import com.example.backend.common.response.AppCode;
 import com.example.backend.common.service.JwtService;
 import com.example.backend.common.service.OtpService;
 import com.example.backend.module.usermanagement.domain.UserModel;
@@ -10,44 +14,50 @@ import com.example.backend.module.usermanagement.dto.RegisterRequest;
 import com.example.backend.module.usermanagement.dto.VerifyOtpRequest;
 import com.example.backend.module.usermanagement.persistence.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Lógica de negocio para autenticación:
  * - Registro con envío de OTP
- * - Verificación OTP → activa la cuenta
+ * - Verificación OTP → activa la cuenta y envía bienvenida
  * - Login → devuelve JWT con rol y permisos
  */
 @Service
 public class AuthService {
 
-    @Autowired private UserRepository userRepository;
-    @Autowired private JwtService jwtService;
-    @Autowired private OtpService otpService;
-    @Autowired private PasswordEncoder passwordEncoder;
+    @Autowired private UserRepository   userRepository;
+    @Autowired private JwtService       jwtService;
+    @Autowired private OtpService       otpService;
+    @Autowired private PasswordEncoder  passwordEncoder;
+    @Autowired private EmailService     emailService;
+    @Autowired private AppConfigServiceDomain appConfigService;
 
     // ─── Registro ────────────────────────────────────────────────────────────
 
     /**
-     * Paso 1: Crear el usuario con estado PENDING_VERIFICATION y generar OTP.
+     * Paso 1: Crea el usuario con estado PENDING_VERIFICATION y genera el OTP.
      *
-     * El OTP se devuelve en la respuesta para que el frontend lo muestre/envíe.
-     * En producción aquí se llamaría al servicio de email para enviarlo.
+     * Comportamiento según email.enabled y perfil:
+     *
+     *  DEV  + email.enabled=true  → intenta enviar correo; el OTP también va
+     *                               en la respuesta (útil mientras no hay dominio
+     *                               verificado en Brevo).
+     *  DEV  + email.enabled=false → OTP en la respuesta, sin intento de correo.
+     *  PROD + email.enabled=true  → envía correo; la respuesta NO expone el OTP.
+     *  PROD + email.enabled=false → sin correo; la respuesta NO expone el OTP.
      */
     public String register(RegisterRequest req) {
 
         // Validar unicidad
         if (userRepository.existsByDni(req.dni()))
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "El DNI ya está registrado");
+            throw new AppException(AppCode.USER_DNI_EXISTS);
 
         if (userRepository.existsByUsername(req.username()))
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "El nombre de usuario ya está en uso");
+            throw new AppException(AppCode.USER_USERNAME_EXISTS);
 
         if (userRepository.existsByEmail(req.email()))
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "El correo ya está registrado");
+            throw new AppException(AppCode.USER_EMAIL_EXISTS);
 
         // Generar OTP
         String otpCode   = otpService.generateOtp();
@@ -58,7 +68,7 @@ public class AuthService {
                 .dni(req.dni())
                 .username(req.username())
                 .email(req.email())
-                .password(passwordEncoder.encode(req.password()))   // ← BCrypt
+                .password(passwordEncoder.encode(req.password()))
                 .status(UserStatus.PENDING_VERIFICATION)
                 .otpCode(otpCode)
                 .otpExpiration(otpExpiry)
@@ -66,34 +76,49 @@ public class AuthService {
 
         userRepository.save(user);
 
-        // TODO: enviar otpCode al correo req.email() con JavaMailSender / SendGrid
-        // emailService.sendOtp(req.email(), otpCode);
+        boolean emailEnabled = appConfigService.isEmailEnabled();
+        boolean isDev        = emailService.isDev();
 
-        // En dev se devuelve el OTP directamente (en prod NO hacer esto)
-        return "Usuario registrado. Código OTP: " + otpCode + " (válido 10 min)";
+        if (emailEnabled) {
+            // Intenta enviar (el EmailService captura cualquier error sin lanzar)
+            emailService.sendOtp(req.email(), req.username(), otpCode);
+        }
+
+        if (isDev) {
+            // En dev siempre devolvemos el OTP en la respuesta para facilitar pruebas,
+            // independientemente de si el correo se envió o no.
+            return "Usuario registrado. Código OTP: " + otpCode + " (válido 10 min)";
+        }
+
+        // En PROD nunca se expone el OTP en la respuesta
+        return "Registro exitoso. Te enviamos un código OTP a " + req.email() + " (válido 10 min).";
     }
 
     // ─── Verificar OTP ───────────────────────────────────────────────────────
 
     /**
-     * Paso 2: Validar el OTP e activar la cuenta.
+     * Paso 2: Valida el OTP y activa la cuenta.
+     * Tras activar, intenta enviar el correo de bienvenida (error no bloquea).
      */
     public AuthResponse verifyOtp(VerifyOtpRequest req) {
 
         UserModel user = userRepository.findByEmail(req.email())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
+                .orElseThrow(() -> new AppException(AppCode.USER_NOT_FOUND));
 
         if (user.isActive())
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La cuenta ya está verificada");
+            throw new AppException(AppCode.USER_ALREADY_ACTIVE);
 
         if (!otpService.isValid(user.getOtpCode(), req.otpCode(), user.getOtpExpiration()))
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Código OTP inválido o expirado");
+            throw new AppException(AppCode.OTP_INVALID);
 
         // Activar cuenta y limpiar OTP
         user.setStatus(UserStatus.ACTIVE);
         user.setOtpCode(null);
         user.setOtpExpiration(null);
         userRepository.save(user);
+
+        // Correo de bienvenida — el EmailService absorbe cualquier error
+        emailService.sendWelcome(user.getEmail(), user.getUsername(), null);
 
         // Generar JWT
         String token = jwtService.generateToken(user);
@@ -110,21 +135,19 @@ public class AuthService {
 
         UserModel user = userRepository
                 .findByUsernameOrEmail(req.identifier(), req.identifier())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Credenciales incorrectas"));
+                .orElseThrow(() -> new AppException(AppCode.AUTH_BAD_CREDENTIALS));
 
-        // Verificar estado
         if (user.isBanned())
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Tu cuenta ha sido suspendida");
+            throw new AppException(AppCode.USER_BANNED);
 
         if (user.isPendingVerification())
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Debes verificar tu correo antes de iniciar sesión");
+            throw new AppException(AppCode.OTP_PENDING_REQUIRED);
 
-        if (user.getStatus() == com.example.backend.common.enums.UserStatus.INACTIVE)
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Tu cuenta está inactiva");
+        if (user.getStatus() == UserStatus.INACTIVE)
+            throw new AppException(AppCode.USER_INACTIVE);
 
-        // Verificar contraseña
         if (!passwordEncoder.matches(req.password(), user.getPassword()))
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Credenciales incorrectas");
+            throw new AppException(AppCode.AUTH_BAD_CREDENTIALS);
 
         String token = jwtService.generateToken(user);
         return AuthResponse.of(token, user.getUsername(), user.getEmail(),

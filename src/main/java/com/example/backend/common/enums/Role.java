@@ -5,7 +5,7 @@ import java.util.List;
 /**
  * Roles del sistema con sus permisos granulares.
  * Los permisos se incluyen directamente en el JWT como claim "permissions".
-*/
+ */
 public enum Role {
 
     USER(List.of(
@@ -39,6 +39,8 @@ public enum Role {
             "usuarios:activar",
             "usuarios:eliminar",
             "roles:asignar",
+            "config:ver",
+            "config:editar",
             "sistema:configurar",
             "superadmin:panel"
     ));

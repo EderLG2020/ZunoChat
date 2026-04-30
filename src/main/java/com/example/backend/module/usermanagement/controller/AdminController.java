@@ -1,5 +1,8 @@
 package com.example.backend.module.usermanagement.controller;
 
+import com.example.backend.common.response.ApiResponse;
+import com.example.backend.common.response.AppCode;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -19,37 +22,40 @@ public class AdminController {
 
     @GetMapping("/dashboard")
     @PreAuthorize("hasAuthority('dashboard:ver')")
-    public String verDashboard() {
-        return "Dashboard visible para ADMIN y SUPERADMIN";
+    public ResponseEntity<ApiResponse<String>> verDashboard() {
+        return ResponseEntity.ok(
+                ApiResponse.ok(AppCode.OK_GENERIC, "Dashboard visible para ADMIN y SUPERADMIN", null));
     }
 
     @PutMapping("/dashboard")
     @PreAuthorize("hasAuthority('dashboard:editar')")
-    public String editarDashboard() {
-        return "Dashboard editable para ADMIN y SUPERADMIN";
+    public ResponseEntity<ApiResponse<String>> editarDashboard() {
+        return ResponseEntity.ok(
+                ApiResponse.ok(AppCode.OK_GENERIC, "Dashboard editable para ADMIN y SUPERADMIN", null));
     }
 
     @GetMapping("/usuarios")
     @PreAuthorize("hasAuthority('usuarios:ver')")
-    public String listarUsuarios() {
-        return "Lista de usuarios (ADMIN / SUPERADMIN)";
+    public ResponseEntity<ApiResponse<String>> listarUsuarios() {
+        return ResponseEntity.ok(
+                ApiResponse.ok(AppCode.OK_USERS_LISTED, "Lista de usuarios (ADMIN / SUPERADMIN)", null));
     }
 
     @PatchMapping("/usuarios/{id}/ban")
     @PreAuthorize("hasAuthority('usuarios:bannear')")
-    public String banearUsuario(@PathVariable Long id) {
-        return "Usuario " + id + " baneado";
+    public ResponseEntity<ApiResponse<Void>> banearUsuario(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.ok(AppCode.OK_USER_BANNED));
     }
 
     @DeleteMapping("/usuarios/{id}")
     @PreAuthorize("hasAuthority('usuarios:eliminar')")
-    public String eliminarUsuario(@PathVariable Long id) {
-        return "Usuario " + id + " eliminado (solo SUPERADMIN)";
+    public ResponseEntity<ApiResponse<Void>> eliminarUsuario(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.ok(AppCode.OK_USER_DELETED));
     }
 
     @PatchMapping("/usuarios/{id}/rol")
     @PreAuthorize("hasAuthority('roles:asignar')")
-    public String asignarRol(@PathVariable Long id) {
-        return "Rol asignado (solo SUPERADMIN)";
+    public ResponseEntity<ApiResponse<Void>> asignarRol(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.ok(AppCode.OK_ROLE_ASSIGNED));
     }
 }
