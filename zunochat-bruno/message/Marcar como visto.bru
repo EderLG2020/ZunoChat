@@ -1,0 +1,25 @@
+meta {
+  name: Marcar como visto
+  type: http
+  seq: 5
+}
+
+patch {
+  url: {{base_url}}/api/messages/read
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "conversationId": 1
+  }
+  
+  
+  
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

@@ -13,14 +13,12 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 /**
- * Endpoints públicos de autenticación.
- *
- * POST /auth/register     → registra usuario (devuelve OTP en dev)
- * POST /auth/verify-otp   → verifica OTP y activa la cuenta → devuelve JWT
- * POST /auth/login        → login → devuelve JWT
+ * POST /api/auth/register     → registra usuario
+ * POST /api/auth/verify-otp   → verifica OTP → devuelve JWT
+ * POST /api/auth/login        → login → devuelve JWT
  */
 @RestController
-@RequestMapping("/auth")
+@RequestMapping("/api/auth")
 public class AuthController {
 
     @Autowired

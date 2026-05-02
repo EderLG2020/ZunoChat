@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.*;
  *   @PreAuthorize("hasAnyAuthority('usuarios:bannear', 'usuarios:eliminar')")
  */
 @RestController
-@RequestMapping("/admin")
+@RequestMapping("/api/admin")
 public class AdminController {
 
     @GetMapping("/dashboard")

@@ -37,15 +37,13 @@ public class SecurityConfig {
                 )
                 .authorizeHttpRequests(auth -> auth
 
-                        // 🔓 Rutas públicas
+                        // Rutas públicas
                         .requestMatchers(
-                            "/auth/register",
-                            "/auth/verify-otp",
-                            "/auth/login"
+                                "/api/auth/register",
+                                "/api/auth/verify-otp",
+                                "/api/auth/login"
                         ).permitAll()
 
-                        // El resto requiere autenticación.
-                        // El control fino se delega a @PreAuthorize en cada controller.
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)

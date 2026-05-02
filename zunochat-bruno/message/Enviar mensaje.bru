@@ -1,0 +1,26 @@
+meta {
+  name: Enviar mensaje
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{base_url}}/api/messages
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "conversationId": 1,
+    "type": "TEXT",
+    "textContent": "nuevo mensaje para el otro usuer xdxdnuevo mensaje para el otro usuer xdxdnuevo mensaje para el otro usuer xdxdnuevo mensaje para el otro usuer xdxd" 
+    
+    
+  }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

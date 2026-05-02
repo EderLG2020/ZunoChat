@@ -1,0 +1,22 @@
+meta {
+  name: crear conversacion
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{base_url}}/api/conversations
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "targetUserId": 4
+  }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.*;
  * PUT  /config/email        → activa o desactiva el servicio de correo
  */
 @RestController
-@RequestMapping("/config")
+@RequestMapping("/api/config")
 public class AppConfigController {
 
     @Autowired

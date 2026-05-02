@@ -57,6 +57,17 @@ public enum AppCode {
     OTP_EXPIRED             (HttpStatus.BAD_REQUEST,           "El código OTP ha expirado. Solicita uno nuevo"),
     OTP_PENDING_REQUIRED    (HttpStatus.FORBIDDEN,             "Debes verificar tu correo antes de iniciar sesión"),
 
+    // ─── Conversaciones ───────────────────────────────────────────────────────
+    CONV_NOT_FOUND          (HttpStatus.NOT_FOUND,             "Conversación no encontrada"),
+    CONV_SELF_CONVERSATION  (HttpStatus.BAD_REQUEST,           "No puedes iniciar una conversación contigo mismo"),
+
+    // ─── Mensajes ─────────────────────────────────────────────────────────────
+    MSG_TEXT_REQUIRED       (HttpStatus.BAD_REQUEST,           "El contenido de texto es obligatorio para mensajes de tipo TEXT"),
+    MSG_PAYLOAD_REQUIRED    (HttpStatus.BAD_REQUEST,           "El payload es obligatorio para mensajes de tipo PAYLOAD"),
+    MSG_FILE_REQUIRED       (HttpStatus.BAD_REQUEST,           "Debes adjuntar al menos un archivo"),
+    MSG_FILE_LIMIT          (HttpStatus.BAD_REQUEST,           "Se permiten máximo 3 archivos por mensaje"),
+    MSG_NOT_FOUND           (HttpStatus.NOT_FOUND,             "Mensaje no encontrado"),
+
     // ─── Validación ───────────────────────────────────────────────────────────
 
     VALID_FIELDS            (HttpStatus.BAD_REQUEST,           "Hay errores en los campos enviados"),
