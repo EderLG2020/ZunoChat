@@ -12,17 +12,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
-/**
- * Configuración de seguridad.
- *
- * @EnableMethodSecurity habilita:
- *   @PreAuthorize("hasRole('ADMIN')")
- *   @PreAuthorize("hasAuthority('dashboard:editar')")
- *   @PreAuthorize("hasAnyAuthority('usuarios:ver', 'usuarios:bannear')")
- */
 @Configuration
 @EnableWebSecurity
-@EnableMethodSecurity   // ← necesario para @PreAuthorize en controllers
+@EnableMethodSecurity
 public class SecurityConfig {
 
     @Autowired
@@ -37,11 +29,17 @@ public class SecurityConfig {
                 )
                 .authorizeHttpRequests(auth -> auth
 
-                        // Rutas públicas
+                        // Rutas públicas REST
                         .requestMatchers(
                                 "/api/auth/register",
                                 "/api/auth/verify-otp",
                                 "/api/auth/login"
+                        ).permitAll()
+
+                        // WebSocket — la autenticación se hace vía STOMP (StompAuthChannelInterceptor)
+                        .requestMatchers(
+                                "/ws/**",
+                                "/ws/info/**"
                         ).permitAll()
 
                         .anyRequest().authenticated()
@@ -50,10 +48,6 @@ public class SecurityConfig {
                 .build();
     }
 
-    /**
-     * Bean de BCrypt para inyectar en servicios.
-     * Factor de coste 12 (buen balance seguridad/rendimiento en 2024).
-     */
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder(12);

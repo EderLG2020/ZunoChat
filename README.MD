@@ -844,3 +844,119 @@ zunochat-bruno/
 ```
 
 Para usar la colección, abrir Bruno, importar la carpeta `zunochat-bruno/` y seleccionar el entorno `dev`.
+
+
+
+17. Resumen de flujos
+
+╔══════════════════════════════════════════════════════════════════╗
+║              FLUJO: ENVIAR MENSAJE (WebSocket)                   ║
+╠══════════════════════════════════════════════════════════════════╣
+║  Cliente  →  /app/chat.send (STOMP)                              ║
+║     ↓                                                            ║
+║  WebSocketController.sendMessage()                               ║
+║     ↓                                                            ║
+║  MessageService.sendMessage()  →  PostgreSQL (persist)           ║
+║     ↓                                                            ║
+║  MessageProducer.publishMessage()  →  RabbitMQ q.messages        ║
+║     ↓                                                            ║
+║  MessageConsumer.consumeMessage()                                ║
+║     ↓                                                            ║
+║  SimpMessagingTemplate  →  /topic/conversation.{id}  →  Clientes ║
+║                         →  /user/{id}/queue/notifications        ║
+╚══════════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════════╗
+║              FLUJO: TYPING INDICATOR                             ║
+╠══════════════════════════════════════════════════════════════════╣
+║  Cliente  →  /app/chat.typing  {typing: true}                    ║
+║     ↓                                                            ║
+║  PresenceService.setTyping()  →  Redis  TTL: 5s                  ║
+║     ↓                                                            ║
+║  Broadcast directo  →  /topic/typing.{convId}  →  Clientes       ║
+╚══════════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════════╗
+║              FLUJO: PRESENCIA                                    ║
+╠══════════════════════════════════════════════════════════════════╣
+║  WS CONNECT  →  PresenceService.markOnline()  →  Redis           ║
+║             →  MessageProducer.publishPresence()                 ║
+║             →  RabbitMQ fanout  →  q.presence                    ║
+║             →  MessageConsumer  →  /topic/presence.{userId}      ║
+║                                                                  ║
+║  WS DISCONNECT  →  SessionRegistry.removeSession()               ║
+║  (si 0 sesiones) →  PresenceService.markOffline()                ║
+║                 →  Mismo flujo broadcast                         ║
+╚══════════════════════════════════════════════════════════════════╝
+
+```js
+// Instalación: npm install @stomp/stompjs sockjs-client
+
+import { Client } from '@stomp/stompjs';
+import SockJS from 'sockjs-client';
+
+const token = localStorage.getItem('jwt');
+
+const client = new Client({
+  webSocketFactory: () => new SockJS(`http://localhost:8080/ws?token=${token}`),
+  connectHeaders: {
+    Authorization: `Bearer ${token}`,
+  },
+  reconnectDelay: 5000,
+  heartbeatIncoming: 10000,
+  heartbeatOutgoing: 10000,
+
+  onConnect: () => {
+    // Suscribir a mensajes de una conversación
+    client.subscribe('/topic/conversation.42', (frame) => {
+      const msg = JSON.parse(frame.body);
+      console.log('Nuevo mensaje:', msg);
+    });
+
+    // Suscribir a typing indicators
+    client.subscribe('/topic/typing.42', (frame) => {
+      const event = JSON.parse(frame.body);
+      console.log(`${event.username} está escribiendo: ${event.typing}`);
+    });
+
+    // Suscribir a presencia
+    client.subscribe('/topic/presence.7', (frame) => {
+      const event = JSON.parse(frame.body);
+      console.log(`${event.username} está ${event.online ? 'online' : 'offline'}`);
+    });
+
+    // Suscribir a notificaciones personales
+    client.subscribe('/user/queue/notifications', (frame) => {
+      const msg = JSON.parse(frame.body);
+      console.log('Notificación:', msg);
+    });
+
+    // Heartbeat cada 60s
+    setInterval(() => client.publish({ destination: '/app/heartbeat', body: '' }), 60000);
+  },
+});
+
+client.activate();
+
+// Enviar mensaje
+client.publish({
+  destination: '/app/chat.send',
+  body: JSON.stringify({
+    conversationId: 42,
+    type: 'TEXT',
+    textContent: 'Hola!',
+  }),
+});
+
+// Indicar que está escribiendo
+client.publish({
+  destination: '/app/chat.typing',
+  body: JSON.stringify({ conversationId: 42, typing: true }),
+});
+
+// Marcar como leído
+client.publish({
+  destination: '/app/chat.read',
+  body: JSON.stringify({ conversationId: 42 }),
+});
+```

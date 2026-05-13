@@ -20,7 +20,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
 
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U admin"]
+      test: ["CMD-SHELL", "pg_isready -U admin -d zunochat"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -39,7 +39,58 @@ services:
       - "5050:80"
 
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: zunochat-redis
+    restart: unless-stopped
+    command: redis-server --requirepass redis123 --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redis123", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: zunochat-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: rabbit
+      RABBITMQ_DEFAULT_PASS: rabbit123
+      RABBITMQ_DEFAULT_VHOST: zunochat
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: [ "CMD", "rabbitmq-diagnostics", "ping" ]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  redisinsight:
+    image: redis/redisinsight:latest
+    container_name: zunochat-redisinsight
+    restart: unless-stopped
+    ports:
+      - "5540:5540"
+    volumes:
+      - redisinsight_data:/data
+    depends_on:
+      redis:
+        condition: service_healthy
 
 volumes:
   postgres_data:
+  redis_data:
+  rabbitmq_data:
+  redisinsight_data:
