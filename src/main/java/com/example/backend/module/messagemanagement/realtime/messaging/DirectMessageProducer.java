@@ -46,9 +46,16 @@ public class DirectMessageProducer implements IMessageProducer {
                 event.sentAt()
         );
 
+        // Broadcast al topic de la conversación (ambos usuarios suscritos lo reciben)
         messagingTemplate.convertAndSend("/topic/conversation." + event.conversationId(), outbound);
+
+        // ✅ Notificación al receptor (por username, que es lo que usa el Principal)
         messagingTemplate.convertAndSendToUser(
-                event.receiverId().toString(), "/queue/notifications", outbound);
+                event.receiverUsername(), "/queue/notifications", outbound);
+
+        // ✅ Notificación al emisor para que su sidebar actualice el último mensaje
+        messagingTemplate.convertAndSendToUser(
+                event.senderUsername(), "/queue/notifications", outbound);
     }
 
     public void publishReadReceipt(ReadReceiptRabbitEvent event) {

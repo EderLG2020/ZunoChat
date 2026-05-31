@@ -7,11 +7,18 @@ import com.example.backend.module.messagemanagement.application.MessageService;
 import com.example.backend.module.messagemanagement.dto.MarkReadRequest;
 import com.example.backend.module.messagemanagement.dto.MessageResponse;
 import com.example.backend.module.messagemanagement.dto.SendMessageRequest;
+import com.example.backend.module.messagemanagement.persistence.ConversationRepository;
+import com.example.backend.module.messagemanagement.realtime.messaging.IMessageProducer;
+import com.example.backend.module.messagemanagement.realtime.messaging.event.MessageEvent;
+import com.example.backend.module.messagemanagement.realtime.messaging.event.ReadReceiptRabbitEvent;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDateTime;
 
 /**
  * GET   /api/messages?conversationId={id}  → lista mensajes (inversa, paginada)
@@ -22,16 +29,10 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/messages")
 public class MessageController {
 
-    @Autowired private MessageService messageService;
+    @Autowired private MessageService         messageService;
+    @Autowired private IMessageProducer       messageProducer;       // ✅ AÑADIDO
+    @Autowired private ConversationRepository conversationRepository; // ✅ AÑADIDO
 
-    /**
-     * El usuario autenticado debe ser participante de la conversación.
-     *
-     * Query params:
-     *   conversationId (obligatorio)
-     *   page (default 0)
-     *   size (default 30)
-     */
     @GetMapping
     public ResponseEntity<ApiResponse<Page<MessageResponse>>> list(
             @RequestHeader("Authorization") String token,
@@ -44,10 +45,6 @@ public class MessageController {
         return ResponseEntity.ok(ApiResponse.ok(AppCode.OK_GENERIC, result));
     }
 
-    /**
-     * Envía un mensaje dentro de una conversación existente.
-     * El receptor se infiere desde la conversación → no hace falta especificarlo.
-     */
     @PostMapping
     public ResponseEntity<ApiResponse<MessageResponse>> send(
             @RequestHeader("Authorization") String token,
@@ -55,15 +52,28 @@ public class MessageController {
     ) {
         Long userId = JwtUtil.extractUserId(token);
         MessageResponse result = messageService.sendMessage(userId, req);
+
+        String senderUsername   = SecurityContextHolder.getContext().getAuthentication().getName();
+        String receiverUsername = conversationRepository.findById(result.conversationId())
+                .map(conv -> conv.getUser1Id().equals(userId)
+                        ? conv.getUser2Username()
+                        : conv.getUser1Username())
+                .orElse(result.receiverId().toString());
+
+        messageProducer.publishMessage(new MessageEvent(
+                result.messageId(), result.conversationId(),
+                result.senderId(), senderUsername,
+                result.receiverId(), receiverUsername,
+                result.type(), result.textContent(),
+                result.payload(), result.payloadType(),
+                result.fileUrls(), result.status(), result.sentAt()
+        ));
+
         return ResponseEntity
                 .status(AppCode.OK_CREATED.getHttpStatus())
                 .body(ApiResponse.ok(AppCode.OK_CREATED, result));
     }
 
-    /**
-     * Marca todos los mensajes recibidos en la conversación como READ (visto).
-     * Equivale a abrir el chat en WhatsApp → doble check azul.
-     */
     @PatchMapping("/read")
     public ResponseEntity<ApiResponse<String>> markAsRead(
             @RequestHeader("Authorization") String token,
@@ -71,6 +81,16 @@ public class MessageController {
     ) {
         Long userId = JwtUtil.extractUserId(token);
         int updated = messageService.markAsRead(req.conversationId(), userId);
+
+        // ✅ Publicar read receipt por WS para que el emisor vea el "visto"
+        if (updated > 0) {
+            String username = SecurityContextHolder.getContext().getAuthentication().getName();
+            messageProducer.publishReadReceipt(new ReadReceiptRabbitEvent(
+                    req.conversationId(), userId, username,
+                    updated, LocalDateTime.now()
+            ));
+        }
+
         return ResponseEntity.ok(
                 ApiResponse.ok(AppCode.OK_GENERIC,
                         updated + " mensaje(s) marcados como leídos")

@@ -18,6 +18,7 @@ public record MessageEvent(
         Long senderId,
         String senderUsername,
         Long receiverId,
+        String receiverUsername,
         MessageType type,
         String textContent,
         Object payload,

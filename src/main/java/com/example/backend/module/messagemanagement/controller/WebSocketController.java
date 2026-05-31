@@ -6,6 +6,7 @@ import com.example.backend.module.messagemanagement.dto.SendMessageRequest;
 import com.example.backend.module.messagemanagement.dto.ws.ReadReceiptEvent;
 import com.example.backend.module.messagemanagement.dto.ws.TypingEvent;
 import com.example.backend.module.messagemanagement.dto.ws.WsInboundMessage;
+import com.example.backend.module.messagemanagement.persistence.ConversationRepository;
 import com.example.backend.module.messagemanagement.realtime.messaging.IMessageProducer;
 import com.example.backend.module.messagemanagement.realtime.messaging.event.MessageEvent;
 import com.example.backend.module.messagemanagement.realtime.messaging.event.PresenceRabbitEvent;
@@ -36,7 +37,7 @@ public class WebSocketController {
     @Autowired private IPresenceService          presenceService;
     @Autowired private IWebSocketSessionRegistry sessionRegistry;
     @Autowired private SimpMessagingTemplate     messagingTemplate;
-    // UserRepository y JwtService eliminados — no se usan en este controlador
+    @Autowired private ConversationRepository    conversationRepository; // ✅ para obtener receiverUsername
 
     // ─── Conexión ─────────────────────────────────────────────────────────────
 
@@ -98,10 +99,19 @@ public class WebSocketController {
         );
         MessageResponse saved = messageService.sendMessage(senderId, req);
 
+        // ✅ Obtener receiverUsername desde la conversación (ya desnormalizado)
+        String receiverUsername = conversationRepository.findById(saved.conversationId())
+                .map(conv -> conv.getUser1Id().equals(senderId)
+                        ? conv.getUser2Username()
+                        : conv.getUser1Username())
+                .orElse(saved.receiverId().toString());
+
         messageProducer.publishMessage(new MessageEvent(
-                saved.messageId(), saved.conversationId(), saved.senderId(),
-                principal.getName(), saved.receiverId(), saved.type(),
-                saved.textContent(), saved.payload(), saved.payloadType(),
+                saved.messageId(), saved.conversationId(),
+                saved.senderId(), principal.getName(),
+                saved.receiverId(), receiverUsername,  // ✅ receiverUsername incluido
+                saved.type(), saved.textContent(),
+                saved.payload(), saved.payloadType(),
                 saved.fileUrls(), saved.status(), saved.sentAt()
         ));
     }

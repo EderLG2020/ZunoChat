@@ -34,9 +34,13 @@ public class MessageConsumer {
                 event.type(), event.textContent(), event.payload(), event.payloadType(),
                 event.fileUrls(), event.status(), event.sentAt()
         );
+
         messagingTemplate.convertAndSend("/topic/conversation." + event.conversationId(), outbound);
+
         messagingTemplate.convertAndSendToUser(
-                event.receiverId().toString(), "/queue/notifications", outbound);
+                event.receiverUsername(), "/queue/notifications", outbound);
+        messagingTemplate.convertAndSendToUser(
+                event.senderUsername(), "/queue/notifications", outbound);
     }
 
     @RabbitListener(queues = RabbitMqConfig.QUEUE_READ_RECEIPTS,

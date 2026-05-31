@@ -6,6 +6,7 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
@@ -41,5 +42,9 @@ public class JwtUtil {
         Number userId = (Number) claims.get("userId");
         if (userId == null) throw new AppException(AppCode.AUTH_TOKEN_INVALID);
         return userId.longValue();
+    }
+
+    public static String extractUsername(String token) {
+        return SecurityContextHolder.getContext().getAuthentication().getName();
     }
 }
