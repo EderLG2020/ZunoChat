@@ -15,11 +15,12 @@ import java.util.Map;
 /**
  * Interceptor HTTP del handshake WebSocket.
  *
- * Extrae el token del query param ?token=<jwt> y lo almacena
- * en los atributos de la sesión WS para uso posterior.
+ * Extrae el token del querys param ?token=<jwt> y guarda
+ * username, userId y role en los atributos de la sesión WS.
  *
- * La autenticación real (Principal) se establece en StompAuthChannelInterceptor.
- * Este interceptor solo pre-valida y guarda userId/username en los atributos.
+ * Estos atributos son usados por StompAuthChannelInterceptor como
+ * fallback cuando el cliente no envía el header Authorization en el
+ * frame CONNECT (caso típico de clientes que pasan el token solo por URL).
  */
 @Slf4j
 @Component
@@ -35,20 +36,27 @@ public class JwtHandshakeInterceptor implements HandshakeInterceptor {
                                    Map<String, Object> attributes) {
 
         String query = request.getURI().getQuery();
-        if (query == null) return true; // el token también puede venir en el frame CONNECT
+        if (query == null) return true;
 
         String token = extractTokenFromQuery(query);
         if (token == null) return true;
 
         try {
             Claims claims = jwtService.extractClaims(token);
-            attributes.put("username", claims.getSubject());
-            Number userId = (Number) claims.get("userId");
+
+            String username = claims.getSubject();
+            Number userId   = (Number) claims.get("userId");
+            String role     = claims.get("role", String.class);
+
+            attributes.put("username", username);
             if (userId != null) attributes.put("userId", userId.longValue());
-            log.debug("Handshake WS pre-validado: user={}", claims.getSubject());
+            if (role   != null) attributes.put("role",   role);
+
+            log.debug("Handshake WS validado: user={} role={}", username, role);
         } catch (Exception e) {
             log.warn("Handshake WS — token inválido en query param: {}", e.getMessage());
         }
+
         return true;
     }
 

@@ -8,28 +8,21 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.AmqpException;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
-/**
- * Productor de eventos RabbitMQ.
- * Publicación asíncrona — el caller no espera confirmación de procesamiento.
- */
 @Slf4j
 @Component
-public class MessageProducer {
+@ConditionalOnProperty(name = "rabbitmq.enabled", havingValue = "true")
+public class MessageProducer implements IMessageProducer {
 
     @Autowired
     private RabbitTemplate rabbitTemplate;
 
     public void publishMessage(MessageEvent event) {
         try {
-            rabbitTemplate.convertAndSend(
-                    RabbitMqConfig.EXCHANGE_DIRECT,
-                    RabbitMqConfig.RK_MESSAGE,
-                    event
-            );
-            log.debug("Publicado MESSAGE event: msgId={} convId={}",
-                    event.messageId(), event.conversationId());
+            rabbitTemplate.convertAndSend(RabbitMqConfig.EXCHANGE_DIRECT, RabbitMqConfig.RK_MESSAGE, event);
+            log.debug("Publicado MESSAGE event: msgId={} convId={}", event.messageId(), event.conversationId());
         } catch (AmqpException e) {
             log.error("Error publicando MESSAGE event: {}", e.getMessage(), e);
         }
@@ -37,13 +30,8 @@ public class MessageProducer {
 
     public void publishReadReceipt(ReadReceiptRabbitEvent event) {
         try {
-            rabbitTemplate.convertAndSend(
-                    RabbitMqConfig.EXCHANGE_DIRECT,
-                    RabbitMqConfig.RK_READ,
-                    event
-            );
-            log.debug("Publicado READ_RECEIPT event: convId={} userId={}",
-                    event.conversationId(), event.readByUserId());
+            rabbitTemplate.convertAndSend(RabbitMqConfig.EXCHANGE_DIRECT, RabbitMqConfig.RK_READ, event);
+            log.debug("Publicado READ_RECEIPT event: convId={} userId={}", event.conversationId(), event.readByUserId());
         } catch (AmqpException e) {
             log.error("Error publicando READ_RECEIPT event: {}", e.getMessage(), e);
         }
@@ -51,14 +39,8 @@ public class MessageProducer {
 
     public void publishPresence(PresenceRabbitEvent event) {
         try {
-            // Fanout → se enruta automáticamente a todos los queues enlazados
-            rabbitTemplate.convertAndSend(
-                    RabbitMqConfig.EXCHANGE_FANOUT,
-                    "",   // routing key ignorada en fanout
-                    event
-            );
-            log.debug("Publicado PRESENCE event: userId={} online={}",
-                    event.userId(), event.online());
+            rabbitTemplate.convertAndSend(RabbitMqConfig.EXCHANGE_FANOUT, "", event);
+            log.debug("Publicado PRESENCE event: userId={} online={}", event.userId(), event.online());
         } catch (AmqpException e) {
             log.error("Error publicando PRESENCE event: {}", e.getMessage(), e);
         }

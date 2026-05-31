@@ -4,9 +4,9 @@ import com.example.backend.common.enums.Role;
 import com.example.backend.common.enums.UserStatus;
 import com.example.backend.module.usermanagement.domain.UserModel;
 import com.example.backend.module.usermanagement.persistence.UserRepository;
-import net.datafaker.Faker;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.datafaker.Faker;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -20,115 +20,110 @@ import java.util.Random;
 @RequiredArgsConstructor
 public class DataSeeder implements ApplicationRunner {
 
-    private final UserRepository userRepository;
+    private final UserRepository  userRepository;
     private final PasswordEncoder passwordEncoder;
 
     private static final int TOTAL_USERS = 200;
 
-    private final Faker faker = new Faker(new Locale("es"));
+    private final Faker  faker  = new Faker(new Locale("es"));
     private final Random random = new Random();
 
     @Override
     public void run(ApplicationArguments args) {
-
-        log.info("[DataSeeder] Iniciando carga de datos...");
+        log.info("[DataSeeder] Iniciando...");
 
         seedSuperAdmin();
         seedAdmin("admin1");
         seedAdmin("admin2");
-
         seedFakeUsers(TOTAL_USERS);
 
-        log.info("[DataSeeder] Seeder completado.");
+        log.info("[DataSeeder] Completado.");
     }
 
-    private void seedSuperAdmin() {
+    // ─── Super admin ─────────────────────────────────────────────────────────
 
+    private void seedSuperAdmin() {
         if (userRepository.existsByUsername("superadmin")) {
-            log.info("[DataSeeder] SUPERADMIN ya existe.");
+            log.info("[DataSeeder] superadmin ya existe, omitiendo.");
             return;
         }
-
-        UserModel user = UserModel.builder()
+        userRepository.save(UserModel.builder()
                 .username("superadmin")
                 .email("superadmin@zunochat.com")
                 .dni("00000000")
                 .password(passwordEncoder.encode("Super@2024!"))
                 .role(Role.SUPERADMIN)
                 .status(UserStatus.ACTIVE)
-                .build();
-
-        userRepository.save(user);
-
-        log.info("[DataSeeder] SUPERADMIN creado.");
+                .build());
+        log.info("[DataSeeder] superadmin creado.");
     }
 
-    private void seedAdmin(String username) {
+    // ─── Admins ───────────────────────────────────────────────────────────────
 
+    private void seedAdmin(String username) {
         if (userRepository.existsByUsername(username)) {
-            log.info("[DataSeeder] {} ya existe.", username);
+            log.info("[DataSeeder] {} ya existe, omitiendo.", username);
             return;
         }
-
-        UserModel user = UserModel.builder()
+        userRepository.save(UserModel.builder()
                 .username(username)
                 .email(username + "@zunochat.com")
                 .dni(generateDni())
                 .password(passwordEncoder.encode("Admin@2024!"))
                 .role(Role.ADMIN)
                 .status(UserStatus.ACTIVE)
-                .build();
-
-        userRepository.save(user);
-
+                .build());
         log.info("[DataSeeder] {} creado.", username);
     }
 
-    private void seedFakeUsers(int total) {
+    // ─── Usuarios fake ────────────────────────────────────────────────────────
 
+    /**
+     * Solo crea usuarios si la tabla todavía no tiene suficientes usuarios con rol USER.
+     * En reinicios posteriores, el conteo ya alcanza TOTAL_USERS y no hace nada.
+     */
+    private void seedFakeUsers(int total) {
+        long existing = userRepository.countByRole(Role.USER);
+
+        if (existing >= total) {
+            log.info("[DataSeeder] Ya existen {} usuarios USER, omitiendo seed.", existing);
+            return;
+        }
+
+        int needed  = (int) (total - existing);
         int created = 0;
 
-        while (created < total) {
+        log.info("[DataSeeder] Creando {} usuarios fake (ya existen {})...", needed, existing);
 
+        while (created < needed) {
             try {
-
                 String username = generateUsername();
-
-                UserModel user = UserModel.builder()
+                userRepository.save(UserModel.builder()
                         .username(username)
                         .email(username + "@mail.com")
                         .dni(generateDni())
                         .password(passwordEncoder.encode("User@2024!"))
                         .role(Role.USER)
                         .status(UserStatus.ACTIVE)
-                        .build();
-
-                userRepository.save(user);
-
+                        .build());
                 created++;
-
             } catch (Exception e) {
-
-                // colisión de username/email único
-                log.debug("[DataSeeder] Colisión detectada, regenerando...");
+                // colisión de username/email/dni único — se regenera y reintenta
+                log.debug("[DataSeeder] Colisión, regenerando...");
             }
         }
 
         log.info("[DataSeeder] {} usuarios fake creados.", created);
     }
 
+    // ─── Helpers ─────────────────────────────────────────────────────────────
+
     private String generateUsername() {
-
-        String firstName = faker.name().firstName().toLowerCase();
-        int number = random.nextInt(9999);
-
-        return firstName + "_" + number;
+        String firstName = faker.name().firstName().toLowerCase().replaceAll("[^a-z]", "");
+        return firstName + "_" + random.nextInt(9999);
     }
 
     private String generateDni() {
-
-        return String.valueOf(
-                10000000 + random.nextInt(89999999)
-        );
+        return String.valueOf(10_000_000 + random.nextInt(89_999_999));
     }
 }

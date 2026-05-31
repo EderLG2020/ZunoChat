@@ -1,962 +1,360 @@
 # ZunoChat — Backend API
 
-> API REST para una plataforma de mensajería en tiempo real, construida con Spring Boot 3, JWT y PostgreSQL.
+API REST + WebSocket en tiempo real para mensajería directa, construida con **Spring Boot 3**, JWT, PostgreSQL, STOMP/WebSocket, Redis y RabbitMQ (opcionales).
 
 ---
 
-## Tabla de Contenidos
-
-- [Descripción General](#descripción-general)
-- [Tecnologías Utilizadas](#tecnologías-utilizadas)
-- [Arquitectura del Proyecto](#arquitectura-del-proyecto)
-- [Estructura de Directorios](#estructura-de-directorios)
-- [Modelos de Datos](#modelos-de-datos)
-- [Autenticación y Seguridad](#autenticación-y-seguridad)
-- [Sistema de Roles y Permisos](#sistema-de-roles-y-permisos)
-- [Endpoints de la API](#endpoints-de-la-api)
-- [Formato de Respuesta](#formato-de-respuesta)
-- [Configuración y Variables de Entorno](#configuración-y-variables-de-entorno)
-- [Ejecución con Docker](#ejecución-con-docker)
-- [Ejecución Local](#ejecución-local)
-- [Datos Iniciales (DataSeeder)](#datos-iniciales-dataseeder)
-- [Colección Bruno](#colección-bruno)
-
----
-
-## Descripción General
-
-ZunoChat es una API REST backend para una plataforma de mensajería directa (DM) entre usuarios. Implementa un flujo completo de autenticación con verificación por OTP vía correo electrónico, sistema de roles con permisos granulares integrados en el JWT, y un módulo de mensajería con soporte para texto plano, payloads estructurados JSON, archivos e imágenes.
-
-La API está diseñada con foco en rendimiento: las conversaciones y mensajes utilizan datos desnormalizados para evitar JOINs en los listados críticos, e índices estratégicos sobre las columnas de mayor consulta.
-
----
-
-## Tecnologías Utilizadas
+## Tecnologías
 
 | Categoría | Tecnología | Versión |
 |---|---|---|
 | Lenguaje | Java | 21 |
 | Framework | Spring Boot | 3.3.2 |
 | Seguridad | Spring Security + JWT (jjwt) | 0.11.5 |
-| Persistencia | Spring Data JPA + Hibernate | — |
 | Base de datos | PostgreSQL | 16 |
+| WebSocket | Spring WebSocket + STOMP + SockJS | — |
+| Mensajería async | RabbitMQ (opcional) | 3.13 |
+| Caché / Presencia | Redis (opcional) | 7.2 |
 | Correo | Brevo (Sendinblue SDK) | 1.1.0 |
-| Utilidades | Lombok | 1.18.32 |
-| Bloom Filter | Google Guava | 33.2.1-jre |
-| Validación | Jakarta Validation (Bean Validation) | — |
-| Build | Maven | 3.x |
 | Contenedores | Docker + Docker Compose | — |
-| Cliente HTTP interno | OkHttp3 | 4.12.0 |
 
 ---
 
-## Arquitectura del Proyecto
-
-El proyecto sigue una arquitectura modular por dominio funcional, con una capa `common` para las utilidades transversales (seguridad, excepciones, respuestas, email).
+## Arquitectura
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                     HTTP Request                        │
-└────────────────────────┬────────────────────────────────┘
-                         │
-                    JwtFilter
-              (valida token, extrae rol
-               y permisos → SecurityContext)
-                         │
-              ┌──────────┴──────────┐
-              │                     │
-         Controllers           SecurityConfig
-     (AuthController,        (rutas públicas /
-      AdminController,        rutas protegidas)
-      ConversationController,
-      MessageController,
-      AppConfigController)
-              │
-         Services / Application Layer
-     (AuthService, ConversationService,
-      MessageService, AppConfigServiceDomain)
-              │
-         Repositories (Spring Data JPA)
-              │
-         PostgreSQL 16
+HTTP/WebSocket Request
+       │
+  ┌────┴────┐
+JwtFilter   JwtHandshakeInterceptor (WS handshake ?token=)
+       │         │
+       │    StompAuthChannelInterceptor (STOMP CONNECT)
+       │         │
+  Controllers    WebSocketController
+  (Auth, Admin,  (@MessageMapping)
+  Conversation,       │
+  Message,    ┌───────┴───────┐
+  AppConfig)  IPresenceService  IMessageProducer
+              (Redis | Memory)  (Rabbit | Direct)
+                     │
+              Services → Repositories → PostgreSQL
 ```
 
-### Principios de diseño aplicados
-
-- **Separación por capas**: controller → application (service) → persistence (repository) → domain (entity).
-- **Respuesta unificada**: todas las respuestas pasan por `ApiResponse<T>`, con campo `success`, `code`, `status`, `message`, `timestamp` y opcionalmente `data` o `errors`.
-- **Códigos de aplicación centralizados**: el enum `AppCode` define todos los códigos de éxito y error con su HTTP status asociado, evitando strings dispersos en el código.
-- **Stateless**: no se usa sesión HTTP. El estado de autenticación viaja completamente en el JWT.
-- **Desnormalización estratégica**: las entidades `Conversation` y `Message` almacenan datos de usuario (username, avatar) para evitar JOINs en los listados de alta frecuencia.
-
----
-
-## Estructura de Directorios
-
-```
-src/main/java/com/example/backend/
-│
-├── BackendApplication.java
-│
-├── common/
-│   ├── config/
-│   │   ├── DataSeeder.java                   ← Carga inicial de usuarios (Bloom Filter)
-│   │   ├── controller/AppConfigController.java
-│   │   ├── domain/AppConfigModel.java
-│   │   ├── domain/AppConfigServiceDomain.java
-│   │   ├── dto/EmailConfigRequest.java
-│   │   ├── dto/EmailConfigResponse.java
-│   │   └── persistence/AppConfigRepository.java
-│   │
-│   ├── email/
-│   │   ├── EmailService.java                 ← Integración con Brevo
-│   │   └── template/EmailTemplates.java      ← HTML para OTP y bienvenida
-│   │
-│   ├── enums/
-│   │   ├── ConversationStatus.java           ← ONLINE, TYPING, OFFLINE, AWAY
-│   │   ├── EmailType.java
-│   │   ├── MessageStatus.java                ← SENT, DELIVERED, READ
-│   │   ├── MessageType.java                  ← TEXT, PAYLOAD, FILE, IMAGE
-│   │   ├── PayloadType.java                  ← SALES, SYSTEM, SURVEY, CARD
-│   │   ├── Role.java                         ← USER, ADMIN, SUPERADMIN + permisos
-│   │   └── UserStatus.java                   ← PENDING_VERIFICATION, ACTIVE, BANNED...
-│   │
-│   ├── exception/
-│   │   ├── AppException.java
-│   │   └── GlobalExceptionHandler.java
-│   │
-│   ├── response/
-│   │   ├── ApiResponse.java                  ← Envoltorio unificado de respuestas
-│   │   └── AppCode.java                      ← Catálogo de códigos del sistema
-│   │
-│   ├── security/
-│   │   └── filter/
-│   │       ├── JwtFilter.java                ← Extrae rol y permisos del JWT
-│   │       └── SecurityConfig.java           ← Rutas públicas, STATELESS, BCrypt
-│   │
-│   ├── service/
-│   │   ├── JwtService.java                   ← Generación y validación de tokens
-│   │   └── OtpService.java                   ← Generación y validación de OTP
-│   │
-│   └── util/
-│       ├── DateUtils.java
-│       └── JwtUtil.java                      ← Extrae userId del header Authorization
-│
-└── module/
-    ├── messagemanagement/
-    │   ├── application/
-    │   │   ├── ConversationService.java
-    │   │   └── MessageService.java
-    │   ├── controller/
-    │   │   ├── ConversationController.java
-    │   │   └── MessageController.java
-    │   ├── domain/
-    │   │   ├── ConversationModel.java
-    │   │   └── MessageModel.java
-    │   ├── dto/
-    │   │   ├── ConversationResponse.java
-    │   │   ├── CreateConversationRequest.java
-    │   │   ├── MarkReadRequest.java
-    │   │   ├── MessageResponse.java
-    │   │   └── SendMessageRequest.java
-    │   └── persistence/
-    │       ├── ConversationRepository.java
-    │       └── MessageRepository.java
-    │
-    └── usermanagement/
-        ├── application/AuthService.java
-        ├── controller/
-        │   ├── AdminController.java
-        │   └── AuthController.java
-        ├── domain/UserModel.java
-        ├── dto/
-        │   ├── AuthResponse.java
-        │   ├── LoginRequest.java
-        │   ├── RegisterRequest.java
-        │   └── VerifyOtpRequest.java
-        └── persistence/UserRepository.java
-```
+**Principios clave:**
+- Interfaces intercambiables: `IPresenceService`, `IWebSocketSessionRegistry`, `IMessageProducer` — Redis/RabbitMQ en prod, en memoria en dev.
+- Respuesta unificada `ApiResponse<T>` en todos los endpoints.
+- Stateless: el estado de autenticación viaja completamente en el JWT.
+- `Conversation` desnormaliza usernames para evitar JOINs frecuentes.
 
 ---
 
 ## Modelos de Datos
 
 ### `users`
-
 | Campo | Tipo | Descripción |
 |---|---|---|
-| `id` | BIGINT (PK) | Identificador autogenerado |
-| `dni` | VARCHAR(20) | Documento de identidad, único |
-| `username` | VARCHAR(50) | Nombre de usuario único, público |
-| `email` | VARCHAR(120) | Correo electrónico, único |
-| `password` | TEXT | Hash BCrypt (factor 12) |
-| `role` | ENUM | `USER`, `ADMIN`, `SUPERADMIN` |
-| `status` | ENUM | `PENDING_VERIFICATION`, `ACTIVE`, `BANNED`, `INACTIVE`, `DELETED` |
-| `otp_code` | VARCHAR(6) | Código OTP de 6 dígitos (se limpia tras verificar) |
-| `otp_expiration` | TIMESTAMP | Expiración del OTP |
-| `created_at` | TIMESTAMP | Auditoría de creación |
-| `updated_at` | TIMESTAMP | Auditoría de última modificación |
-| `updated_by` | BIGINT | ID del admin que realizó el último cambio |
+| id | BIGINT PK | Autogenerado |
+| dni | VARCHAR(20) | Único |
+| username | VARCHAR(50) | Único, público |
+| email | VARCHAR(120) | Único |
+| password | TEXT | BCrypt factor 12 |
+| role | ENUM | `USER`, `ADMIN`, `SUPERADMIN` |
+| status | ENUM | `PENDING_VERIFICATION`, `ACTIVE`, `BANNED`, `INACTIVE`, `DELETED` |
+| otp_code / otp_expiration | — | OTP de 6 dígitos, válido 10 min; se limpia al verificar |
 
 ### `conversations`
-
 | Campo | Tipo | Descripción |
 |---|---|---|
-| `id` | BIGINT (PK) | Identificador autogenerado |
-| `user1_id` | BIGINT | Participante con ID menor (garantiza unicidad) |
-| `user2_id` | BIGINT | Participante con ID mayor |
-| `user1_username` | VARCHAR(50) | Desnormalizado para evitar JOIN |
-| `user2_username` | VARCHAR(50) | Desnormalizado para evitar JOIN |
-| `user1_avatar` | VARCHAR(500) | URL de avatar |
-| `user2_avatar` | VARCHAR(500) | URL de avatar |
-| `last_message_preview` | VARCHAR(50) | Vista previa del último mensaje |
-| `last_message_sender_id` | BIGINT | ID del emisor del último mensaje |
-| `last_message_at` | TIMESTAMP | Timestamp del último mensaje |
-| `status` | ENUM | `ONLINE`, `TYPING`, `OFFLINE`, `AWAY` |
-| `unread_count_user1` | INT | Mensajes no leídos del usuario 1 |
-| `unread_count_user2` | INT | Mensajes no leídos del usuario 2 |
-| `updated_at` | TIMESTAMP | Última actualización |
-
-**Regla clave**: siempre `user1Id < user2Id`, lo que garantiza que dos usuarios solo tengan una única fila de conversación sin necesidad de búsqueda dual.
-
-**Índices**: `idx_conv_user1`, `idx_conv_user2`, `idx_conv_updated (last_message_at DESC)`.
+| id | BIGINT PK | Autogenerado |
+| user1_id / user2_id | BIGINT | `user1Id < user2Id` — garantiza unicidad sin búsqueda dual |
+| user1_username / user2_username | VARCHAR(50) | Desnormalizados |
+| last_message_preview | VARCHAR(50) | Vista previa |
+| status | ENUM | `ONLINE`, `TYPING`, `OFFLINE`, `AWAY` |
+| unread_count_user1/2 | INT | Mensajes no leídos por usuario |
 
 ### `messages`
-
 | Campo | Tipo | Descripción |
 |---|---|---|
-| `id` | BIGINT (PK) | Identificador autogenerado |
-| `conversation_id` | BIGINT | FK a `conversations` |
-| `sender_id` | BIGINT | ID del emisor |
-| `receiver_id` | BIGINT | ID del receptor |
-| `type` | ENUM | `TEXT`, `PAYLOAD`, `FILE`, `IMAGE` |
-| `text_content` | TEXT | Contenido de texto (requerido para TEXT/IMAGE) |
-| `payload` | JSONB | Objeto JSON estructurado (para type PAYLOAD) |
-| `payload_type` | ENUM | `SALES`, `SYSTEM`, `SURVEY`, `CARD` |
-| `file_urls` | JSONB | Array de URLs (máx. 3 archivos, 5 MB c/u) |
-| `status` | ENUM | `SENT`, `DELIVERED`, `READ` |
-| `read_at` | TIMESTAMP | Momento de lectura |
-| `sent_at` | TIMESTAMP | Timestamp de envío (inmutable) |
-
-**Índices**: `idx_msg_conversation (conversation_id, sent_at DESC)`, `idx_msg_sender`, `idx_msg_status`.
+| id | BIGINT PK | Autogenerado |
+| conversation_id / sender_id / receiver_id | BIGINT | — |
+| type | ENUM | `TEXT`, `PAYLOAD`, `FILE`, `IMAGE` |
+| text_content | TEXT | Contenido de texto |
+| payload | JSONB | Objeto estructurado (cuando `type=PAYLOAD`) |
+| payload_type | ENUM | `SALES`, `SYSTEM`, `SURVEY`, `CARD` |
+| file_urls | JSONB | Array de URLs (máx. 3) |
+| status | ENUM | `SENT`, `DELIVERED`, `READ` |
 
 ---
 
-## Autenticación y Seguridad
+## Autenticación
 
-### Flujo de registro y activación
-
+### Flujo de registro
 ```
-1. POST /api/auth/register
-   → Crea usuario con status PENDING_VERIFICATION
-   → Genera OTP de 6 dígitos (válido 10 minutos)
-   → Envía correo vía Brevo (si email.enabled = true)
-   → En perfil DEV: el OTP aparece en la respuesta (para pruebas)
-
-2. POST /api/auth/verify-otp
-   → Valida el OTP y su expiración
-   → Activa la cuenta (status → ACTIVE)
-   → Limpia el OTP de la base de datos
-   → Envía correo de bienvenida
-   → Devuelve JWT con rol y permisos
-
-3. POST /api/auth/login
-   → Acepta username o email + contraseña
-   → Valida estado de la cuenta (no BANNED, no PENDING, no INACTIVE)
-   → Devuelve JWT con rol y permisos
+1. POST /api/auth/register  → crea usuario PENDING_VERIFICATION, genera OTP (10 min)
+2. POST /api/auth/verify-otp → activa cuenta, retorna JWT
+3. POST /api/auth/login      → retorna JWT
 ```
 
-### Token JWT
+> En perfil **dev**, el OTP aparece en el campo `message` de la respuesta. En **prod**, solo se envía por correo.
 
-El token tiene una validez de **24 horas** y contiene los siguientes claims:
-
+### JWT (HS256, 24 h)
 ```json
 {
-  "sub": "nombre_de_usuario",
+  "sub": "nombre_usuario",
   "role": "ADMIN",
-  "permissions": ["dashboard:ver", "dashboard:editar", "usuarios:ver", "..."],
-  "userId": 42,
-  "iat": 1234567890,
-  "exp": 1234654290
+  "permissions": ["dashboard:ver", "chat:enviar", "..."],
+  "userId": 42
 }
 ```
 
-El algoritmo de firma es **HS256**. La clave secreta se configura vía `jwt.secret` y debe tener mínimo 32 caracteres.
-
-### JwtFilter
-
-El filtro `JwtFilter` intercepta todas las peticiones autenticadas y:
-1. Lee el header `Authorization: Bearer <token>`.
-2. Extrae el rol (añadido como `ROLE_<nombre>` para `hasRole()`) y los permisos granulares (añadidos individualmente para `hasAuthority()`).
-3. Registra la autenticación en el `SecurityContextHolder`.
-4. En caso de token expirado o inválido, responde directamente con HTTP 401.
-
-### Contraseñas
-
-Las contraseñas se almacenan con **BCrypt** usando factor de coste 12.
-
-### Rutas públicas
-
-Las siguientes rutas no requieren token:
-
-```
-POST /api/auth/register
-POST /api/auth/verify-otp
-POST /api/auth/login
-```
-
-Todas las demás rutas requieren token JWT válido en el header `Authorization`.
+### Autenticación WebSocket (2 capas)
+1. **HTTP Handshake**: `ws://localhost:8080/ws?token=<jwt>`
+2. **Frame STOMP CONNECT**: header `Authorization: Bearer <token>` (fallback a query param)
 
 ---
 
-## Sistema de Roles y Permisos
-
-Los permisos se definen directamente en el enum `Role` y se incluyen en el JWT. Esto permite usar tanto `hasRole()` como `hasAuthority()` en los controladores.
-
-### Tabla de permisos por rol
+## Roles y Permisos
 
 | Permiso | USER | ADMIN | SUPERADMIN |
 |---|:---:|:---:|:---:|
-| `profile:ver` | ✅ | ✅ | ✅ |
-| `profile:editar` | ✅ | ✅ | ✅ |
-| `chat:enviar` | ✅ | ✅ | ✅ |
-| `chat:ver` | ✅ | ✅ | ✅ |
-| `dashboard:ver` | — | ✅ | ✅ |
-| `dashboard:editar` | — | ✅ | ✅ |
-| `usuarios:ver` | — | ✅ | ✅ |
-| `usuarios:bannear` | — | ✅ | ✅ |
-| `usuarios:activar` | — | ✅ | ✅ |
-| `usuarios:eliminar` | — | — | ✅ |
-| `roles:asignar` | — | — | ✅ |
-| `config:ver` | — | — | ✅ |
-| `config:editar` | — | — | ✅ |
-| `sistema:configurar` | — | — | ✅ |
-| `superadmin:panel` | — | — | ✅ |
-
-### Uso en controladores
-
-```java
-@PreAuthorize("hasAuthority('dashboard:ver')")
-@PreAuthorize("hasAuthority('usuarios:eliminar')")
-@PreAuthorize("hasRole('SUPERADMIN')")
-@PreAuthorize("hasAnyAuthority('usuarios:bannear', 'usuarios:eliminar')")
-
-```
+| profile:ver / editar | ✅ | ✅ | ✅ |
+| chat:enviar / ver | ✅ | ✅ | ✅ |
+| dashboard:ver / editar | — | ✅ | ✅ |
+| usuarios:ver / bannear / activar | — | ✅ | ✅ |
+| usuarios:eliminar | — | — | ✅ |
+| roles:asignar | — | — | ✅ |
+| config:ver / editar / sistema:configurar | — | — | ✅ |
 
 ---
 
-## Endpoints de la API
+## Endpoints REST
 
-### Autenticación — `/api/auth`
+### Auth — `/api/auth` (público)
 
-#### `POST /api/auth/register`
+| Método | Endpoint | Body |
+|---|---|---|
+| POST | `/register` | `{ dni, username, email, password }` |
+| POST | `/verify-otp` | `{ email, otpCode }` |
+| POST | `/login` | `{ identifier, password }` |
 
-Registra un nuevo usuario. Requiere verificación OTP para activar la cuenta.
-
-**Body:**
-```json
-{
-  "dni": "12345678",
-  "username": "nuevo_usuario",
-  "email": "usuario@ejemplo.com",
-  "password": "contraseña_segura"
-}
-```
-
-**Respuesta exitosa** (`201 Created`):
-```json
-{
-  "success": true,
-  "code": "OK_REGISTER",
-  "status": 201,
-  "message": "Usuario registrado. Código OTP: 483921 (válido 10 min)",
-  "timestamp": "2026-05-12T10:00:00.000000"
-}
-```
-
----
-
-#### `POST /api/auth/verify-otp`
-
-Verifica el OTP recibido por correo y activa la cuenta. Devuelve el JWT.
-
-**Body:**
-```json
-{
-  "email": "usuario@ejemplo.com",
-  "otpCode": "483921"
-}
-```
-
-**Respuesta exitosa** (`200 OK`):
-```json
-{
-  "success": true,
-  "code": "OK_OTP_VERIFIED",
-  "status": 200,
-  "message": "Cuenta verificada correctamente",
-  "timestamp": "2026-05-12T10:01:00.000000",
-  "data": {
-    "token": "eyJhbGciOiJIUzI1NiJ9...",
-    "username": "nuevo_usuario",
-    "email": "usuario@ejemplo.com",
-    "role": "USER",
-    "permissions": ["profile:ver", "profile:editar", "chat:enviar", "chat:ver"]
-  }
-}
-```
-
----
-
-#### `POST /api/auth/login`
-
-Inicia sesión con username o email más contraseña.
-
-**Body:**
-```json
-{
-  "identifier": "nuevo_usuario",
-  "password": "contraseña_segura"
-}
-```
-
-**Respuesta exitosa** (`200 OK`): igual que `verify-otp`.
-
-**Errores posibles:**
+**Errores comunes:**
 
 | Código | HTTP | Descripción |
 |---|---|---|
 | `AUTH_BAD_CREDENTIALS` | 401 | Credenciales incorrectas |
 | `USER_BANNED` | 403 | Cuenta suspendida |
 | `OTP_PENDING_REQUIRED` | 403 | Cuenta sin verificar |
-| `USER_INACTIVE` | 403 | Cuenta inactiva |
 
 ---
 
-### Administración — `/api/admin`
+### Admin — `/api/admin` (requiere JWT)
 
-> Requiere token JWT. Acceso según permisos del rol.
-
-| Método | Endpoint | Permiso requerido | Descripción |
-|---|---|---|---|
-| `GET` | `/api/admin/dashboard` | `dashboard:ver` | Ver el dashboard |
-| `PUT` | `/api/admin/dashboard` | `dashboard:editar` | Editar el dashboard |
-| `GET` | `/api/admin/usuarios` | `usuarios:ver` | Listar todos los usuarios |
-| `PATCH` | `/api/admin/usuarios/{id}/ban` | `usuarios:bannear` | Banear un usuario |
-| `DELETE` | `/api/admin/usuarios/{id}` | `usuarios:eliminar` | Eliminar un usuario |
-| `PATCH` | `/api/admin/usuarios/{id}/rol` | `roles:asignar` | Cambiar el rol de un usuario |
+| Método | Endpoint | Permiso |
+|---|---|---|
+| GET/PUT | `/dashboard` | `dashboard:ver/editar` |
+| GET | `/usuarios` | `usuarios:ver` |
+| PATCH | `/usuarios/{id}/ban` | `usuarios:bannear` |
+| DELETE | `/usuarios/{id}` | `usuarios:eliminar` |
+| PATCH | `/usuarios/{id}/rol` | `roles:asignar` |
 
 ---
 
 ### Conversaciones — `/api/conversations`
 
-> Requiere token JWT. El `userId` se extrae automáticamente del token.
+**GET** `/api/conversations?page=0&size=20` — lista ordenada por último mensaje.
 
-#### `GET /api/conversations`
-
-Lista todas las conversaciones del usuario autenticado, ordenadas por último mensaje.
-
-**Query params:**
-- `page` (default: `0`)
-- `size` (default: `20`)
-
-**Headers:**
-```
-Authorization: Bearer <token>
-```
-
-**Respuesta exitosa** (`200 OK`):
+**POST** `/api/conversations` — crea o retorna conversación existente.
 ```json
-{
-  "success": true,
-  "code": "OK_GENERIC",
-  "status": 200,
-  "message": "Operación exitosa",
-  "timestamp": "2026-05-12T10:00:00.000000",
-  "data": {
-    "content": [
-      {
-        "id": 1,
-        "otherUserId": 5,
-        "otherUsername": "zuno_42",
-        "otherAvatar": null,
-        "lastMessagePreview": "Hola, ¿cómo estás?",
-        "lastMessageAt": "2026-05-12T09:55:00",
-        "unreadCount": 2,
-        "status": "ONLINE"
-      }
-    ],
-    "totalElements": 15,
-    "totalPages": 1,
-    "number": 0,
-    "size": 20
-  }
-}
+{ "targetUserId": 5 }
 ```
-
----
-
-#### `POST /api/conversations`
-
-Crea una conversación con otro usuario. Si ya existe entre ambos, la retorna sin duplicar.
-
-**Body:**
-```json
-{
-  "targetUserId": 5
-}
-```
-
-**Respuesta exitosa** (`201 Created`): devuelve el objeto `ConversationResponse`.
-
-**Errores posibles:**
-
-| Código | HTTP | Descripción |
-|---|---|---|
-| `CONV_SELF_CONVERSATION` | 400 | Intentó crear conversación consigo mismo |
-| `USER_NOT_FOUND` | 404 | El usuario destino no existe |
 
 ---
 
 ### Mensajes — `/api/messages`
 
-> Requiere token JWT. El `userId` se extrae automáticamente del token.
+**GET** `/api/messages?conversationId=1&page=0&size=30`
 
-#### `GET /api/messages`
+**POST** `/api/messages`
+```js
+{ "conversationId": 1, "type": "TEXT", "textContent": "Hola" }
+{ "conversationId": 1, "type": "PAYLOAD", "payloadType": "SALES", "payload": { ... } }
 
-Lista los mensajes de una conversación en orden cronológico inverso (más reciente primero), con paginación.
-
-**Query params:**
-- `conversationId` (obligatorio)
-- `page` (default: `0`)
-- `size` (default: `30`)
-
-**Headers:**
-```
-Authorization: Bearer <token>
+{ "conversationId": 1, "type": "FILE", "fileUrls": ["https://..."] }
 ```
 
-**Respuesta exitosa** (`200 OK`): página de objetos `MessageResponse`.
+**PATCH** `/api/messages/read` — `{ "conversationId": 1 }`
 
 ---
 
-#### `POST /api/messages`
+### Config — `/api/config` (solo SUPERADMIN)
 
-Envía un mensaje dentro de una conversación existente. El receptor se infiere de la conversación.
-
-**Body — mensaje de texto:**
-```json
-{
-  "conversationId": 1,
-  "type": "TEXT",
-  "textContent": "Hola, ¿cómo estás?"
-}
-```
-
-**Body — mensaje con payload estructurado:**
-```json
-{
-  "conversationId": 1,
-  "type": "PAYLOAD",
-  "payloadType": "SALES",
-  "payload": {
-    "title": "Oferta especial",
-    "price": 99.9,
-    "action": "BUY"
-  }
-}
-```
-
-**Body — mensaje con archivos:**
-```json
-{
-  "conversationId": 1,
-  "type": "FILE",
-  "fileUrls": [
-    "https://cdn.ejemplo.com/archivo1.pdf",
-    "https://cdn.ejemplo.com/archivo2.docx"
-  ]
-}
-```
-
-> Máximo 3 archivos por mensaje.
-
-**Tipos de mensaje disponibles:**
-
-| Tipo | Descripción |
-|---|---|
-| `TEXT` | Texto plano. Requiere `textContent`. |
-| `PAYLOAD` | Objeto JSON estructurado. Requiere `payload` y `payloadType`. |
-| `FILE` | Archivos adjuntos. Requiere `fileUrls` (máx. 3). |
-| `IMAGE` | Imagen. Requiere `textContent` (URL de la imagen). |
-
-**Errores posibles:**
-
-| Código | HTTP | Descripción |
+| Método | Endpoint | Descripción |
 |---|---|---|
-| `MSG_TEXT_REQUIRED` | 400 | Falta `textContent` para tipo TEXT |
-| `MSG_PAYLOAD_REQUIRED` | 400 | Falta `payload` para tipo PAYLOAD |
-| `MSG_FILE_REQUIRED` | 400 | Falta al menos un archivo |
-| `MSG_FILE_LIMIT` | 400 | Más de 3 archivos adjuntos |
-| `CONV_NOT_FOUND` | 404 | Conversación no encontrada |
+| GET | `/email` | Estado del servicio de email |
+| PUT | `/email` | Activar/desactivar en caliente |
 
 ---
 
-#### `PATCH /api/messages/read`
+## WebSocket / STOMP
 
-Marca todos los mensajes recibidos en la conversación como `READ`. Equivale al doble check azul de WhatsApp.
+**Endpoint:** `ws://localhost:8080/ws` · Fallback SockJS: `http://localhost:8080/ws`
 
-**Body:**
-```json
-{
-  "conversationId": 1
-}
-```
+### Publicación (cliente → servidor)
 
-**Respuesta exitosa** (`200 OK`):
-```json
-{
-  "success": true,
-  "code": "OK_GENERIC",
-  "status": 200,
-  "message": "5 mensaje(s) marcados como leídos",
-  "timestamp": "2026-05-12T10:05:00.000000"
-}
-```
+| Destino | Body |
+|---|---|
+| `/app/chat.send` | `{ conversationId, type, textContent?, payload?, fileUrls? }` |
+| `/app/chat.typing` | `{ conversationId, typing: true/false }` |
+| `/app/chat.read` | `{ conversationId }` |
+| `/app/heartbeat` | `""` (cada 60 s) |
 
----
+### Suscripción (servidor → cliente)
 
-### Configuración del sistema — `/api/config`
+| Destino | Evento |
+|---|---|
+| `/topic/conversation.{id}` | Nuevo mensaje |
+| `/topic/typing.{id}` | Indicador de escritura |
+| `/topic/read.{id}` | Confirmación de lectura |
+| `/topic/presence.{userId}` | Usuario online/offline |
+| `/user/queue/notifications` | Notificación personal |
 
-> Solo accesible para SUPERADMIN (`config:ver`, `config:editar`).
+### Conexión
+```js
+import { Client } from '@stomp/stompjs';
+import SockJS from 'sockjs-client';
 
-#### `GET /api/config/email`
-
-Consulta si el servicio de envío de correos está habilitado.
-
-**Respuesta:**
-```json
-{
-  "success": true,
-  "code": "OK_GENERIC",
-  "status": 200,
-  "message": "Configuración de correo obtenida",
-  "timestamp": "2026-05-12T10:00:00.000000",
-  "data": {
-    "enabled": true,
-    "updatedAt": "2026-05-12T09:00:00",
-    "updatedBy": 1
-  }
-}
-```
-
-#### `PUT /api/config/email`
-
-Activa o desactiva el servicio de correo en tiempo de ejecución, sin reiniciar la aplicación.
-
-**Body:**
-```json
-{
-  "enabled": false
-}
+const client = new Client({
+  webSocketFactory: () => new SockJS(`http://localhost:8080/ws?token=${token}`),
+  connectHeaders: { Authorization: `Bearer ${token}` },
+  reconnectDelay: 5000,
+  onConnect: () => {
+    client.subscribe('/topic/conversation.42', frame => console.log(JSON.parse(frame.body)));
+    setInterval(() => client.publish({ destination: '/app/heartbeat', body: '' }), 60000);
+  },
+});
+client.activate();
 ```
 
 ---
 
 ## Formato de Respuesta
 
-Todas las respuestas de la API siguen el mismo envoltorio `ApiResponse<T>`:
-
-**Éxito:**
 ```json
-{
-  "success": true,
-  "code": "OK_LOGIN",
-  "status": 200,
-  "message": "Sesión iniciada correctamente",
-  "timestamp": "2026-05-12T10:00:00.000000",
-  "data": { }
-}
-```
+[
+  { "success": true, "code": "OK_LOGIN", "status": 200, "message": "...", "timestamp": "...", "data": {} },
 
-**Error:**
-```json
-{
-  "success": false,
-  "code": "OTP_EXPIRED",
-  "status": 400,
-  "message": "El código OTP ha expirado. Solicita uno nuevo",
-  "timestamp": "2026-05-12T10:00:00.000000"
-}
-```
+  { "success": false, "code": "OTP_EXPIRED", "status": 400, "message": "...", "timestamp": "..." },
 
-**Error de validación de campos:**
-```json
-{
-  "success": false,
-  "code": "VALID_FIELDS",
-  "status": 400,
-  "message": "Hay errores en los campos enviados",
-  "timestamp": "2026-05-12T10:00:00.000000",
-  "errors": {
-    "email": "El correo no tiene un formato válido",
-    "password": "La contraseña debe tener al menos 8 caracteres"
-  }
-}
+  { "success": false, "code": "VALID_FIELDS", "status": 400, "errors": { "email": "Formato inválido" } }
+]
+
 ```
 
 ---
 
-## Configuración y Variables de Entorno
+## Variables de Entorno (`.env`)
 
-Crea un archivo `.env` en la raíz del proyecto con las siguientes variables:
-http://localhost:5050/login?next=/
 ```env
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=zunochat
-DB_USER=admin
-DB_PASSWORD=admin123
+# Base de datos
+DB_HOST=localhost  DB_PORT=5432  DB_NAME=zunochat  DB_USER=admin  DB_PASSWORD=admin123
+
+# JWT (mín. 32 caracteres)
+JWT_SECRET=zunochat_dev_secret_clave_super_segura_2024
+
+# Email
+BREVO_API_KEY=TU_API_KEY
+
+# Redis
+REDIS_HOST=localhost  REDIS_PORT=6379  REDIS_PASSWORD=redis123
+
+# RabbitMQ
+RABBITMQ_HOST=localhost  RABBITMQ_PORT=5672  RABBITMQ_USERNAME=rabbit  RABBITMQ_PASSWORD=rabbit123  RABBITMQ_VHOST=zunochat
+
+# Feature flags (false = implementación en memoria, no requiere los servicios)
+REDIS_ENABLED=false
+RABBITMQ_ENABLED=false
 ```
 
-El archivo `application-dev.properties` también requiere:
+---
 
-```properties
-# JWT
-jwt.secret=zunochat_dev_secret_clave_super_segura_2024!
+## Docker
 
-# Email (Brevo)
-brevo.api-key=TU_API_KEY_DE_BREVO
-brevo.from.email=tu_correo@dominio.com
-brevo.from.name=ZunoChat
-email.enabled=true
+```bash
+# Solo PostgreSQL (modo dev)
+docker compose up -d
+
+# Con Redis
+docker compose --profile redis up -d
+
+# Con RabbitMQ
+docker compose --profile rabbitmq up -d
+
+# Todo
+docker compose --profile redis --profile rabbitmq up -d
 ```
 
-### Perfiles de Spring
-
-| Perfil | Archivo | Comportamiento del OTP |
+| Servicio | URL | Credenciales |
 |---|---|---|
-| `dev` | `application-dev.properties` | El OTP aparece en la respuesta del registro para facilitar pruebas |
-| `prod` | `application-prod.properties` | El OTP solo se envía por correo, nunca se expone en la respuesta |
+| API REST | http://localhost:8080 | — |
+| pgAdmin 4 | http://localhost:5050 | admin@admin.com / admin123 |
+| RedisInsight | http://localhost:5540 | — |
+| RabbitMQ Management | http://localhost:15672 | rabbit / rabbit123 |
 
-El perfil activo se configura en `application.properties`:
+### Conexión a PostgreSQL desde pgAdmin
+
+> pgAdmin corre dentro de Docker, por lo que **no puede usar `localhost`** para llegar a la base de datos. Usar `host.docker.internal` en su lugar.
+
+| Campo | Valor |
+|---|---|
+| Host | `host.docker.internal` |
+| Port | `5432` |
+| Database | `zunochat` |
+| Username | `admin` |
+| Password | `admin123` |
+ 
+---
+
+## Ejecución Local
+
+```bash
+git clone <repo> && cd zunochat
+cp .env.example .env        # editar valores
+docker compose up -d        # levantar BD
+./mvnw spring-boot:run      # API en http://localhost:8080
+```
+
+**Perfiles:** `dev` (OTP visible en respuesta) · `prod` (OTP solo por correo)
 ```properties
+# application.properties
 spring.profiles.active=dev
 ```
 
 ---
 
-## Ejecución con Docker
+## DataSeeder
 
-El archivo `docker-compose.yml` levanta PostgreSQL 16 y pgAdmin 4:
+Al iniciar, crea usuarios fijos si no existen:
 
-```bash
-docker-compose up -d
-```
-
-| Servicio | Puerto | Descripción |
-|---|---|---|
-| PostgreSQL | `5432` | Base de datos principal |
-| pgAdmin 4 | `5050` | Interfaz web de administración |
-
-**Credenciales pgAdmin:**
-- Email: `admin@admin.com`
-- Password: `admin123`
-
-Una vez levantada la base de datos, ejecutar la aplicación:
-
-```bash
-./mvnw spring-boot:run
-```
-
----
-
-## Ejecución Local
-
-**Requisitos previos:**
-- Java 21
-- Maven 3.x
-- PostgreSQL 16 (o Docker)
-
-```bash
-# 1. Clonar el repositorio
-git clone <url-del-repo>
-cd zunochat
-
-# 2. Levantar la base de datos
-docker-compose up -d
-
-# 3. Configurar el perfil de desarrollo
-# Revisar src/main/resources/application-dev.properties
-
-# 4. Ejecutar la aplicación
-./mvnw spring-boot:run
-
-# La API estará disponible en:
-# http://localhost:8080
-```
-
----
-
-## Datos Iniciales (DataSeeder)
-
-Al arrancar la aplicación, `DataSeeder` crea automáticamente los siguientes usuarios si no existen:
-
-| Rol | Username | Email | Password |
+| Rol | Username | Email | Contraseña |
 |---|---|---|---|
-| SUPERADMIN | `superadmin` | `superadmin@zunochat.com` | `Admin1234!` |
-| ADMIN | `admin1` | `admin1@zunochat.com` | `Admin1234!` |
-| ADMIN | `admin2` | `admin2@zunochat.com` | `Admin1234!` |
-| USER | `zuno_42`, `chat99`, ... | generados | `Admin1234!` |
+| SUPERADMIN | superadmin | superadmin@zunochat.com | Super@2024! |
+| ADMIN | admin1 / admin2 | admin1@zunochat.com | Admin@2024! |
+| USER | ×200 (DataFaker ES) | — | User@2024! |
 
-Además, genera **200 usuarios** con usernames únicos usando un **Bloom Filter de Google Guava** para garantizar unicidad eficiente sin consultar la base de datos en cada intento:
-
-- Configurado para 10.000 elementos esperados con tasa de falsos positivos del 1%.
-- Los usernames siguen patrones como `zuno_42`, `zuno_42x`, `chat.99`, `nova_07z`, generados a partir de 20 raíces latinas con sufijos numéricos y separadores aleatorios.
+> En reinicios posteriores detecta los existentes y no duplica. Si faltan usuarios USER, solo crea los necesarios.
 
 ---
 
 ## Colección Bruno
 
-El directorio `zunochat-bruno/` contiene una colección completa para [Bruno](https://www.usebruno.com/), con todas las peticiones organizadas por módulo.
-
 ```
 zunochat-bruno/
-├── environments/
-│   └── dev.bru              ← Variables de entorno (base URL)
+├── environments/dev.bru
 ├── users/
-│   ├── auth/
-│   │   ├── register.bru
-│   │   ├── verify-otp.bru
-│   │   └── login.bru
-│   └── admin/
-│       ├── dashboard-ver.bru
-│       ├── usuario-ban.bru
-│       ├── usuario-eliminar.bru
-│       ├── usuario-rol.bru
-│       └── usuarios-listar.bru
+│   ├── auth/          register · verify-otp · login
+│   └── admin/         dashboard · ban · eliminar · rol · listar
 └── message/
-    ├── crear conversacion.bru
-    ├── listar conversacion.bru
-    ├── Enviar mensaje.bru
-    ├── Mensajes paginados.bru
-    └── Marcar como visto.bru
+    crear · listar conversacion · enviar · paginados · marcar leído
 ```
 
-Para usar la colección, abrir Bruno, importar la carpeta `zunochat-bruno/` y seleccionar el entorno `dev`.
-
-
-
-17. Resumen de flujos
-
-╔══════════════════════════════════════════════════════════════════╗
-║              FLUJO: ENVIAR MENSAJE (WebSocket)                   ║
-╠══════════════════════════════════════════════════════════════════╣
-║  Cliente  →  /app/chat.send (STOMP)                              ║
-║     ↓                                                            ║
-║  WebSocketController.sendMessage()                               ║
-║     ↓                                                            ║
-║  MessageService.sendMessage()  →  PostgreSQL (persist)           ║
-║     ↓                                                            ║
-║  MessageProducer.publishMessage()  →  RabbitMQ q.messages        ║
-║     ↓                                                            ║
-║  MessageConsumer.consumeMessage()                                ║
-║     ↓                                                            ║
-║  SimpMessagingTemplate  →  /topic/conversation.{id}  →  Clientes ║
-║                         →  /user/{id}/queue/notifications        ║
-╚══════════════════════════════════════════════════════════════════╝
-
-╔══════════════════════════════════════════════════════════════════╗
-║              FLUJO: TYPING INDICATOR                             ║
-╠══════════════════════════════════════════════════════════════════╣
-║  Cliente  →  /app/chat.typing  {typing: true}                    ║
-║     ↓                                                            ║
-║  PresenceService.setTyping()  →  Redis  TTL: 5s                  ║
-║     ↓                                                            ║
-║  Broadcast directo  →  /topic/typing.{convId}  →  Clientes       ║
-╚══════════════════════════════════════════════════════════════════╝
-
-╔══════════════════════════════════════════════════════════════════╗
-║              FLUJO: PRESENCIA                                    ║
-╠══════════════════════════════════════════════════════════════════╣
-║  WS CONNECT  →  PresenceService.markOnline()  →  Redis           ║
-║             →  MessageProducer.publishPresence()                 ║
-║             →  RabbitMQ fanout  →  q.presence                    ║
-║             →  MessageConsumer  →  /topic/presence.{userId}      ║
-║                                                                  ║
-║  WS DISCONNECT  →  SessionRegistry.removeSession()               ║
-║  (si 0 sesiones) →  PresenceService.markOffline()                ║
-║                 →  Mismo flujo broadcast                         ║
-╚══════════════════════════════════════════════════════════════════╝
-
-```js
-// Instalación: npm install @stomp/stompjs sockjs-client
-
-import { Client } from '@stomp/stompjs';
-import SockJS from 'sockjs-client';
-
-const token = localStorage.getItem('jwt');
-
-const client = new Client({
-  webSocketFactory: () => new SockJS(`http://localhost:8080/ws?token=${token}`),
-  connectHeaders: {
-    Authorization: `Bearer ${token}`,
-  },
-  reconnectDelay: 5000,
-  heartbeatIncoming: 10000,
-  heartbeatOutgoing: 10000,
-
-  onConnect: () => {
-    // Suscribir a mensajes de una conversación
-    client.subscribe('/topic/conversation.42', (frame) => {
-      const msg = JSON.parse(frame.body);
-      console.log('Nuevo mensaje:', msg);
-    });
-
-    // Suscribir a typing indicators
-    client.subscribe('/topic/typing.42', (frame) => {
-      const event = JSON.parse(frame.body);
-      console.log(`${event.username} está escribiendo: ${event.typing}`);
-    });
-
-    // Suscribir a presencia
-    client.subscribe('/topic/presence.7', (frame) => {
-      const event = JSON.parse(frame.body);
-      console.log(`${event.username} está ${event.online ? 'online' : 'offline'}`);
-    });
-
-    // Suscribir a notificaciones personales
-    client.subscribe('/user/queue/notifications', (frame) => {
-      const msg = JSON.parse(frame.body);
-      console.log('Notificación:', msg);
-    });
-
-    // Heartbeat cada 60s
-    setInterval(() => client.publish({ destination: '/app/heartbeat', body: '' }), 60000);
-  },
-});
-
-client.activate();
-
-// Enviar mensaje
-client.publish({
-  destination: '/app/chat.send',
-  body: JSON.stringify({
-    conversationId: 42,
-    type: 'TEXT',
-    textContent: 'Hola!',
-  }),
-});
-
-// Indicar que está escribiendo
-client.publish({
-  destination: '/app/chat.typing',
-  body: JSON.stringify({ conversationId: 42, typing: true }),
-});
-
-// Marcar como leído
-client.publish({
-  destination: '/app/chat.read',
-  body: JSON.stringify({ conversationId: 42 }),
-});
-```
+Importar en Bruno → seleccionar entorno **dev**.

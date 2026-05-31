@@ -1,16 +1,21 @@
 package com.example.backend.module.usermanagement.controller;
 
+import com.example.backend.common.enums.UserStatus;
 import com.example.backend.common.response.ApiResponse;
 import com.example.backend.common.response.AppCode;
 import com.example.backend.module.usermanagement.application.AuthService;
-import com.example.backend.module.usermanagement.dto.AuthResponse;
-import com.example.backend.module.usermanagement.dto.LoginRequest;
-import com.example.backend.module.usermanagement.dto.RegisterRequest;
-import com.example.backend.module.usermanagement.dto.VerifyOtpRequest;
+import com.example.backend.module.usermanagement.dto.*;
+import com.example.backend.module.usermanagement.persistence.UserRepository;
 import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 /**
  * POST /api/auth/register     → registra usuario
@@ -19,10 +24,12 @@ import org.springframework.web.bind.annotation.*;
  */
 @RestController
 @RequestMapping("/api/auth")
+@RequiredArgsConstructor
 public class AuthController {
 
     @Autowired
     private AuthService authService;
+    private final UserRepository userRepository;
 
     /**
      * Registro de nuevo usuario (solo rol USER).
@@ -58,5 +65,31 @@ public class AuthController {
         return ResponseEntity
                 .status(AppCode.OK_LOGIN.getHttpStatus())
                 .body(ApiResponse.ok(AppCode.OK_LOGIN, auth));
+    }
+
+    // ── Búsqueda de usuarios ──────────────────────────────────────────────────
+    @GetMapping("/api/users/search")
+    public ResponseEntity<ApiResponse<List<UserSearchResponse>>> search(
+            @RequestParam String q,
+            @AuthenticationPrincipal UserDetails principal) {
+
+        if (q == null || q.isBlank() || q.length() < 2) {
+            return ResponseEntity.ok(ApiResponse.ok(AppCode.OK_GENERIC, "OK", List.of()));
+        }
+
+        var me = userRepository.findByUsername(principal.getUsername()).orElseThrow();
+
+        List<UserSearchResponse> results = userRepository
+                .searchByUsername(
+                        q.trim(),
+                        me.getId(),
+                        UserStatus.ACTIVE,
+                        PageRequest.of(0, 10)
+                )
+                .stream()
+                .map(UserSearchResponse::from)
+                .toList();
+
+        return ResponseEntity.ok(ApiResponse.ok(AppCode.OK_GENERIC, "OK", results));
     }
 }

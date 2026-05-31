@@ -15,15 +15,23 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Map;
 
 /**
- * Interceptor STOMP: valida JWT en el frame CONNECT.
- * Autentica el principal del WebSocket para que @MessageMapping
- * pueda acceder al usuario autenticado.
+ * Interceptor STOMP: autenticad el Principal en el frame CONNECT.
  *
- * Flujo:
- *   CONNECT frame → header Authorization: Bearer <token>
- *       → valida JWT → establece Principal en la sesión WS
+ * Estrategia de autenticación (en orden de prioridad):
+ *
+ *   1. Header "Authorization: Bearer <token>" en el frame CONNECT
+ *      → forma estándar, preferida para clientes que controlan los headers STOMP.
+ *
+ *   2. Atributos de sesión WS (fallback)
+ *      → el JwtHandshakeInterceptor ya validó el ?token= en el HTTP handshake
+ *        y guardó username/userId/roles en los atributos de la sesión.
+ *        Si el cliente conecta por query param peros no envía el header Authorization,
+ *        se usa esta información para construir el Principal igualmente.
+ *
+ * Si ninguna fuente provee credenciales, el frame CONNECT se rechaza.
  */
 @Slf4j
 @Component
@@ -40,34 +48,66 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
         if (accessor == null) return message;
 
         if (StompCommand.CONNECT.equals(accessor.getCommand())) {
+            // ── Fuente 1: header Authorization del frame CONNECT ─────────────
             String authHeader = accessor.getFirstNativeHeader("Authorization");
-
             if (authHeader != null && authHeader.startsWith("Bearer ")) {
                 String token = authHeader.substring(7);
                 try {
-                    Claims claims = jwtService.extractClaims(token);
-                    String username = claims.getSubject();
-                    String role = claims.get("role", String.class);
+                    UsernamePasswordAuthenticationToken auth = buildAuthFromToken(token);
+                    accessor.setUser(auth);
+                    log.debug("WS CONNECT autenticado vía header: user={}", auth.getName());
+                    return message;
+                } catch (Exception e) {
+                    log.warn("WS CONNECT rechazado — token en header inválido: {}", e.getMessage());
+                    throw new IllegalArgumentException("Token WS inválido");
+                }
+            }
 
+            // ── Fuente 2: atributos de sesión (query param ?token= ya validado) ─
+            Map<String, Object> sessionAttributes = accessor.getSessionAttributes();
+            if (sessionAttributes != null) {
+                String username = (String) sessionAttributes.get("username");
+                Long   userId   = (Long)   sessionAttributes.get("userId");
+                String role     = (String) sessionAttributes.get("role");
+
+                if (username != null && userId != null) {
                     UsernamePasswordAuthenticationToken auth =
                             new UsernamePasswordAuthenticationToken(
                                     username,
                                     null,
-                                    List.of(new SimpleGrantedAuthority("ROLE_" + role))
+                                    List.of(new SimpleGrantedAuthority(
+                                            "ROLE_" + (role != null ? role : "USER")))
                             );
-                    // Almacena el userId como detalle para recuperarlo luego
-                    Number userId = (Number) claims.get("userId");
-                    auth.setDetails(userId != null ? userId.longValue() : null);
-
+                    auth.setDetails(userId);
                     accessor.setUser(auth);
-                    log.debug("WS CONNECT autenticado: user={}", username);
-
-                } catch (Exception e) {
-                    log.warn("WS CONNECT rechazado — token inválido: {}", e.getMessage());
-                    throw new IllegalArgumentException("Token WS inválido");
+                    log.debug("WS CONNECT autenticado vía session attrs (query param): user={}", username);
+                    return message;
                 }
             }
+
+            // ── Sin credenciales ─────────────────────────────────────────────
+            log.warn("WS CONNECT rechazado — sin token en header ni en query param");
+            throw new IllegalArgumentException("Token WS requerido");
         }
+
         return message;
+    }
+
+    // ─── Helper ──────────────────────────────────────────────────────────────
+
+    private UsernamePasswordAuthenticationToken buildAuthFromToken(String token) {
+        Claims claims   = jwtService.extractClaims(token);
+        String username = claims.getSubject();
+        String role     = claims.get("role", String.class);
+        Number userId   = (Number) claims.get("userId");
+
+        UsernamePasswordAuthenticationToken auth =
+                new UsernamePasswordAuthenticationToken(
+                        username,
+                        null,
+                        List.of(new SimpleGrantedAuthority("ROLE_" + (role != null ? role : "USER")))
+                );
+        auth.setDetails(userId != null ? userId.longValue() : null);
+        return auth;
     }
 }
