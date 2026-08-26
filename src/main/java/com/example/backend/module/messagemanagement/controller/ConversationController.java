@@ -7,10 +7,14 @@ import com.example.backend.common.util.JwtUtil;
 import com.example.backend.module.messagemanagement.application.ConversationService;
 import com.example.backend.module.messagemanagement.dto.ConversationResponse;
 import com.example.backend.module.messagemanagement.dto.CreateConversationRequest;
+import com.example.backend.module.messagemanagement.dto.MuteConversationRequest;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 /**
@@ -19,6 +23,7 @@ import org.springframework.web.bind.annotation.*;
  */
 @RestController
 @RequestMapping("/api/conversations")
+@Validated
 public class ConversationController {
 
     @Autowired private ConversationService conversationService;
@@ -33,11 +38,10 @@ public class ConversationController {
      */
     @GetMapping
     public ResponseEntity<ApiResponse<Page<ConversationResponse>>> list(
-            @RequestHeader("Authorization") String token,
-            @RequestParam(defaultValue = "0")  int page,
-            @RequestParam(defaultValue = "20") int size
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size
     ) {
-        Long userId = JwtUtil.extractUserId(token);
+        Long userId = JwtUtil.currentUserId();
         Page<ConversationResponse> result = conversationService.listConversations(userId, page, size);
         return ResponseEntity.ok(ApiResponse.ok(AppCode.OK_GENERIC, result));
     }
@@ -47,14 +51,20 @@ public class ConversationController {
      * Si ya existe entre ambos, la retorna sin duplicar.
      */
     @PostMapping
-    public ResponseEntity<ApiResponse<ConversationResponse>> create(
-            @RequestHeader("Authorization") String token,
-            @Valid @RequestBody CreateConversationRequest req
-    ) {
-        Long userId = JwtUtil.extractUserId(token);
+    public ResponseEntity<ApiResponse<ConversationResponse>> create(@Valid @RequestBody CreateConversationRequest req) {
+        Long userId = JwtUtil.currentUserId();
         ConversationResponse result = conversationService.createOrGet(userId, req);
         return ResponseEntity
                 .status(AppCode.OK_CREATED.getHttpStatus())
                 .body(ApiResponse.ok(AppCode.OK_CREATED, result));
+    }
+
+    /** Silencia/reactiva la conversación solo para el usuario autenticado. */
+    @PatchMapping("/{id}/mute")
+    public ResponseEntity<ApiResponse<ConversationResponse>> mute(@PathVariable Long id, @RequestBody MuteConversationRequest req) {
+        Long userId = JwtUtil.currentUserId();
+        ConversationResponse result = conversationService.setMuted(userId, id, req.muted());
+        AppCode code = req.muted() ? AppCode.OK_CONVERSATION_MUTED : AppCode.OK_CONVERSATION_UNMUTED;
+        return ResponseEntity.ok(ApiResponse.ok(code, result));
     }
 }

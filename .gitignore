@@ -34,3 +34,6 @@ build/
 
 zunochat.zip
 .env
+
+# Archivos subidos por el proveedor de storage "local" (ver app.storage.*)
+/uploads/

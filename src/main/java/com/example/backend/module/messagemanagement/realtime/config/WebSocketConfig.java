@@ -23,6 +23,29 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Value("${websocket.allowed-origins}")
     private String[] allowedOrigins;
 
+    // ─── Broker relay externo (opcional) ────────────────────────────────────
+    //
+    // Por defecto (app.websocket.relay.enabled=false) se usa el broker
+    // simple en memoria de Spring: funciona perfecto con una sola instancia
+    // del backend, pero con más de una, un mensaje solo llega a los clientes
+    // conectados a esa misma instancia. Activando el relay, todas las
+    // instancias comparten el mismo fan-out a través de RabbitMQ (plugin
+    // STOMP) — ver docker-compose.yml → servicio "rabbitmq".
+    @Value("${app.websocket.relay.enabled:false}")
+    private boolean relayEnabled;
+
+    @Value("${app.websocket.relay.host:localhost}")
+    private String relayHost;
+
+    @Value("${app.websocket.relay.port:61613}")
+    private int relayPort;
+
+    @Value("${app.websocket.relay.login:rabbit}")
+    private String relayLogin;
+
+    @Value("${app.websocket.relay.passcode:rabbit123}")
+    private String relayPasscode;
+
     /**
      * Endpoint de conexión WebSocket.
      * Clientes conectan a: ws://host/ws?token=<jwt>
@@ -44,7 +67,17 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
      */
     @Override
     public void configureMessageBroker(MessageBrokerRegistry registry) {
-        registry.enableSimpleBroker("/topic", "/queue");
+        if (relayEnabled) {
+            registry.enableStompBrokerRelay("/topic", "/queue")
+                    .setRelayHost(relayHost)
+                    .setRelayPort(relayPort)
+                    .setClientLogin(relayLogin)
+                    .setClientPasscode(relayPasscode)
+                    .setSystemLogin(relayLogin)
+                    .setSystemPasscode(relayPasscode);
+        } else {
+            registry.enableSimpleBroker("/topic", "/queue");
+        }
         registry.setApplicationDestinationPrefixes("/app");
         registry.setUserDestinationPrefix("/user");
     }

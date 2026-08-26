@@ -1,10 +1,11 @@
 package com.example.backend.common.security.filter;
 
+import com.example.backend.common.enums.UserStatus;
+import com.example.backend.common.security.IUserStatusCache;
 import com.example.backend.common.service.JwtService;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
-import io.jsonwebtoken.MalformedJwtException;
-import io.jsonwebtoken.security.SignatureException;
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -38,11 +39,23 @@ public class JwtFilter extends OncePerRequestFilter {
     @Autowired
     private JwtService jwtService;
 
+    @Autowired
+    private IUserStatusCache userStatusCache;
+
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
                                     FilterChain filterChain)
             throws ServletException, IOException {
+
+        // /api/auth/refresh recibe intencionalmente un JWT ya EXPIRADO (esa es
+        // su función) — si lo procesáramos aquí como cualquier otro request,
+        // el catch de ExpiredJwtException de abajo respondería 401 antes de
+        // que el controller pudiera aplicar su propia ventana de gracia.
+        if (request.getRequestURI().equals("/api/auth/refresh")) {
+            filterChain.doFilter(request, response);
+            return;
+        }
 
         String header = request.getHeader("Authorization");
 
@@ -58,6 +71,17 @@ public class JwtFilter extends OncePerRequestFilter {
             String username = claims.getSubject();
 
             if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+
+                // Revalida contra el estado real del usuario (cacheado 30s, ver
+                // UserStatusCache) — sin esto, banear/desactivar a alguien no
+                // tenía ningún efecto hasta que su JWT expirara solo (24h).
+                UserStatus status = userStatusCache.getStatus(username);
+                if (status == UserStatus.BANNED || status == UserStatus.INACTIVE || status == UserStatus.DELETED) {
+                    response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                    response.setContentType("application/json");
+                    response.getWriter().write("{\"error\": \"Cuenta suspendida o inactiva\"}");
+                    return;
+                }
 
                 List<GrantedAuthority> authorities = new ArrayList<>();
 
@@ -79,15 +103,25 @@ public class JwtFilter extends OncePerRequestFilter {
                 UsernamePasswordAuthenticationToken auth =
                         new UsernamePasswordAuthenticationToken(username, null, authorities);
 
+                // userId queda disponible en los details → evita volver a parsear
+                // y verificar la firma del JWT en cada controller (ver JwtUtil.currentUserId()).
+                Number userId = claims.get("userId", Number.class);
+                if (userId != null) auth.setDetails(userId.longValue());
+
                 SecurityContextHolder.getContext().setAuthentication(auth);
             }
 
         } catch (ExpiredJwtException e) {
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            response.setContentType("application/json");
             response.getWriter().write("{\"error\": \"Token expirado\"}");
             return;
-        } catch (SignatureException | MalformedJwtException e) {
+        } catch (JwtException | IllegalArgumentException e) {
+            // Cubre firma inválida, token malformado, vacío, o cualquier otro
+            // fallo de parseo — antes solo se atrapaban 2 subtipos puntuales
+            // y el resto caía al handler genérico de 500.
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            response.setContentType("application/json");
             response.getWriter().write("{\"error\": \"Token inválido\"}");
             return;
         }

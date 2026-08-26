@@ -9,8 +9,8 @@ import com.example.backend.module.messagemanagement.dto.ws.WsInboundMessage;
 import com.example.backend.module.messagemanagement.persistence.ConversationRepository;
 import com.example.backend.module.messagemanagement.realtime.messaging.IMessageProducer;
 import com.example.backend.module.messagemanagement.realtime.messaging.event.MessageEvent;
-import com.example.backend.module.messagemanagement.realtime.messaging.event.PresenceRabbitEvent;
-import com.example.backend.module.messagemanagement.realtime.messaging.event.ReadReceiptRabbitEvent;
+import com.example.backend.module.messagemanagement.realtime.messaging.event.PresenceBroadcastEvent;
+import com.example.backend.module.messagemanagement.realtime.messaging.event.ReadReceiptBroadcastEvent;
 import com.example.backend.module.messagemanagement.realtime.presence.IPresenceService;
 import com.example.backend.module.messagemanagement.realtime.session.IWebSocketSessionRegistry;
 import lombok.extern.slf4j.Slf4j;
@@ -53,7 +53,7 @@ public class WebSocketController {
 
         sessionRegistry.registerSession(userId, sessionId);
         presenceService.markOnline(userId);
-        messageProducer.publishPresence(new PresenceRabbitEvent(userId, principal.getName(), true, null));
+        messageProducer.publishPresence(new PresenceBroadcastEvent(userId, principal.getName(), true, null));
         log.info("WS CONNECTED: user={} session={}", principal.getName(), sessionId);
     }
 
@@ -75,7 +75,7 @@ public class WebSocketController {
             presenceService.markOffline(userId);
             String lastSeen = presenceService.getLastSeen(userId);
             messageProducer.publishPresence(
-                    new PresenceRabbitEvent(userId, principal.getName(), false, lastSeen));
+                    new PresenceBroadcastEvent(userId, principal.getName(), false, lastSeen));
             log.info("WS DISCONNECTED (todas las sesiones): user={}", principal.getName());
         } else {
             log.info("WS DISCONNECTED (sesiones restantes): user={} session={}",
@@ -112,7 +112,8 @@ public class WebSocketController {
                 saved.receiverId(), receiverUsername,  // ✅ receiverUsername incluido
                 saved.type(), saved.textContent(),
                 saved.payload(), saved.payloadType(),
-                saved.fileUrls(), saved.status(), saved.sentAt()
+                saved.fileUrls(), saved.status(), saved.sentAt(),
+                saved.deleted(), saved.editedAt()
         ));
     }
 
@@ -148,7 +149,7 @@ public class WebSocketController {
         int updated = messageService.markAsRead(event.conversationId(), userId);
         if (updated == 0) return;
 
-        messageProducer.publishReadReceipt(new ReadReceiptRabbitEvent(
+        messageProducer.publishReadReceipt(new ReadReceiptBroadcastEvent(
                 event.conversationId(), userId, principal.getName(),
                 updated, LocalDateTime.now()
         ));

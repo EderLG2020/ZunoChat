@@ -10,6 +10,7 @@ import com.example.backend.module.messagemanagement.persistence.ConversationRepo
 import com.example.backend.module.usermanagement.domain.UserModel;
 import com.example.backend.module.usermanagement.persistence.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -61,24 +62,59 @@ public class ConversationService {
         // Si ya existe, retornarla
         return conversationRepository.findByParticipants(u1, u2)
                 .map(c -> toResponse(c, currentUserId))
-                .orElseGet(() -> {
-                    UserModel user1 = userRepository.findById(u1)
-                            .orElseThrow(() -> new AppException(AppCode.USER_NOT_FOUND));
-                    UserModel user2 = userRepository.findById(u2)
-                            .orElseThrow(() -> new AppException(AppCode.USER_NOT_FOUND));
+                .orElseGet(() -> createNew(u1, u2, currentUserId));
+    }
 
-                    ConversationModel conv = ConversationModel.builder()
-                            .user1Id(u1)
-                            .user2Id(u2)
-                            .user1Username(user1.getUsername())
-                            .user2Username(user2.getUsername())
-                            .user1Avatar(null) // se actualizará cuando el user suba avatar
-                            .user2Avatar(null)
-                            .status(ConversationStatus.OFFLINE)
-                            .build();
+    /**
+     * Crea la conversación entre u1 y u2. Dos requests simultáneos (ambos
+     * lados abriendo el chat a la vez) pueden pasar el `findByParticipants`
+     * de arriba viendo "no existe" y competir por el mismo INSERT — el
+     * UNIQUE(user1_id,user2_id) de BD garantiza que solo uno gane; el que
+     * pierde recibe DataIntegrityViolationException en vez de un 500, y acá
+     * simplemente se le devuelve la conversación que sí se creó.
+     */
+    private ConversationResponse createNew(Long u1, Long u2, Long currentUserId) {
+        try {
+            UserModel user1 = userRepository.findById(u1)
+                    .orElseThrow(() -> new AppException(AppCode.USER_NOT_FOUND));
+            UserModel user2 = userRepository.findById(u2)
+                    .orElseThrow(() -> new AppException(AppCode.USER_NOT_FOUND));
 
-                    return toResponse(conversationRepository.save(conv), currentUserId);
-                });
+            ConversationModel conv = ConversationModel.builder()
+                    .user1Id(u1)
+                    .user2Id(u2)
+                    .user1Username(user1.getUsername())
+                    .user2Username(user2.getUsername())
+                    .user1Avatar(null) // se actualizará cuando el user suba avatar
+                    .user2Avatar(null)
+                    .status(ConversationStatus.OFFLINE)
+                    .build();
+
+            // saveAndFlush (no save): el INSERT debe ejecutarse YA, dentro de
+            // este try, para que la violación del UNIQUE se lance acá mismo
+            // en vez de en el flush automático al final de la transacción,
+            // donde ya no habría catch posible.
+            return toResponse(conversationRepository.saveAndFlush(conv), currentUserId);
+        } catch (DataIntegrityViolationException e) {
+            return conversationRepository.findByParticipants(u1, u2)
+                    .map(c -> toResponse(c, currentUserId))
+                    .orElseThrow(() -> e);
+        }
+    }
+
+    // ─── Silenciar / reactivar ────────────────────────────────────────────────
+
+    @Transactional
+    public ConversationResponse setMuted(Long currentUserId, Long conversationId, boolean muted) {
+        ConversationModel conv = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new AppException(AppCode.CONV_NOT_FOUND));
+        if (!conv.getUser1Id().equals(currentUserId) && !conv.getUser2Id().equals(currentUserId))
+            throw new AppException(AppCode.AUTH_FORBIDDEN);
+
+        if (conv.getUser1Id().equals(currentUserId)) conv.setMutedUser1(muted);
+        else conv.setMutedUser2(muted);
+
+        return toResponse(conversationRepository.save(conv), currentUserId);
     }
 
     // ─── Mapper ───────────────────────────────────────────────────────────────
@@ -90,6 +126,7 @@ public class ConversationService {
         String otherUsername = isUser1 ? c.getUser2Username()  : c.getUser1Username();
         String otherAvatar   = isUser1 ? c.getUser2Avatar()    : c.getUser1Avatar();
         int    unread        = isUser1 ? c.getUnreadCountUser1(): c.getUnreadCountUser2();
+        boolean muted        = isUser1 ? c.isMutedUser1()      : c.isMutedUser2();
         boolean isMine       = currentUserId.equals(c.getLastMessageSenderId());
 
         return new ConversationResponse(
@@ -101,7 +138,8 @@ public class ConversationService {
                 isMine,
                 c.getLastMessageAt(),
                 c.getStatus(),
-                unread
+                unread,
+                muted
         );
     }
 }

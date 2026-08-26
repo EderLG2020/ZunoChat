@@ -30,5 +30,8 @@ public record ConversationResponse(
         ConversationStatus status,
 
         /** Cantidad de mensajes no leídos para el usuario autenticado */
-        int unreadCount
+        int unreadCount,
+
+        /** true si el usuario autenticado silenció esta conversación (no la del otro lado) */
+        boolean muted
 ) {}

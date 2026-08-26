@@ -4,9 +4,11 @@ import com.example.backend.module.messagemanagement.domain.ConversationModel;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
 import java.util.Optional;
 
 public interface ConversationRepository extends JpaRepository<ConversationModel, Long> {
@@ -40,4 +42,43 @@ public interface ConversationRepository extends JpaRepository<ConversationModel,
         WHERE c.user1Id = :u1 AND c.user2Id = :u2
         """)
     boolean existsByParticipants(@Param("u1") Long u1, @Param("u2") Long u2);
+
+    /**
+     * Aplica un mensaje nuevo enviado por user1 (preview + incremento de no
+     * leídos de user2) en un único UPDATE atómico — evita el "lost update"
+     * de leer el contador, sumarle 1 en memoria y guardarlo de vuelta, que
+     * pierde incrementos bajo envíos concurrentes a la misma conversación.
+     */
+    @Modifying(clearAutomatically = true)
+    @Query("""
+        UPDATE ConversationModel c
+        SET c.lastMessagePreview = :preview,
+            c.lastMessageSenderId = :senderId,
+            c.lastMessageAt = :sentAt,
+            c.unreadCountUser2 = c.unreadCountUser2 + 1
+        WHERE c.id = :id
+        """)
+    void applyNewMessageFromUser1(@Param("id") Long id, @Param("preview") String preview,
+                                   @Param("senderId") Long senderId, @Param("sentAt") LocalDateTime sentAt);
+
+    /** Misma operación que {@link #applyNewMessageFromUser1}, cuando el emisor es user2. */
+    @Modifying(clearAutomatically = true)
+    @Query("""
+        UPDATE ConversationModel c
+        SET c.lastMessagePreview = :preview,
+            c.lastMessageSenderId = :senderId,
+            c.lastMessageAt = :sentAt,
+            c.unreadCountUser1 = c.unreadCountUser1 + 1
+        WHERE c.id = :id
+        """)
+    void applyNewMessageFromUser2(@Param("id") Long id, @Param("preview") String preview,
+                                   @Param("senderId") Long senderId, @Param("sentAt") LocalDateTime sentAt);
+
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE ConversationModel c SET c.unreadCountUser1 = 0 WHERE c.id = :id")
+    void resetUnreadUser1(@Param("id") Long id);
+
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE ConversationModel c SET c.unreadCountUser2 = 0 WHERE c.id = :id")
+    void resetUnreadUser2(@Param("id") Long id);
 }

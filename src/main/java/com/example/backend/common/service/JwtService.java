@@ -67,6 +67,20 @@ public class JwtService {
                 .getBody();
     }
 
+    /**
+     * Igual que extractClaims, pero tolera un token EXPIRADO (sigue exigiendo
+     * firma válida) — lo usa /api/auth/refresh para renovar un JWT vencido
+     * dentro de la ventana de gracia, sin obligar al usuario a loguearse de
+     * nuevo. Cualquier otro fallo (firma inválida, malformado) sigue lanzando.
+     */
+    public Claims extractClaimsAllowExpired(String token) {
+        try {
+            return extractClaims(token);
+        } catch (io.jsonwebtoken.ExpiredJwtException e) {
+            return e.getClaims();
+        }
+    }
+
     public String extractUsername(String token) {
         return extractClaims(token).getSubject();
     }

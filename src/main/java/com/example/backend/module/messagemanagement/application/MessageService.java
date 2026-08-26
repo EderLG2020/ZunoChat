@@ -7,33 +7,53 @@ import com.example.backend.common.exception.AppException;
 import com.example.backend.common.response.AppCode;
 import com.example.backend.module.messagemanagement.domain.ConversationModel;
 import com.example.backend.module.messagemanagement.domain.MessageModel;
+import com.example.backend.module.messagemanagement.dto.MessageCursorPage;
 import com.example.backend.module.messagemanagement.dto.MessageResponse;
 import com.example.backend.module.messagemanagement.dto.SendMessageRequest;
 import com.example.backend.module.messagemanagement.persistence.ConversationRepository;
 import com.example.backend.module.messagemanagement.persistence.MessageRepository;
+import com.example.backend.module.messagemanagement.realtime.session.IWebSocketSessionRegistry;
+import com.example.backend.module.usermanagement.persistence.BlockedUserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
+import java.util.List;
 
 @Service
 public class MessageService {
 
-    @Autowired private MessageRepository      messageRepository;
-    @Autowired private ConversationRepository conversationRepository;
+    /** Ventana para poder editar un mensaje de texto después de enviado. */
+    private static final long EDIT_WINDOW_MINUTES = 15;
+
+    @Autowired private MessageRepository           messageRepository;
+    @Autowired private ConversationRepository      conversationRepository;
+    @Autowired private IWebSocketSessionRegistry   sessionRegistry;
+    @Autowired private BlockedUserRepository       blockedUserRepository;
 
     // ─── Listar mensajes ─────────────────────────────────────────────────────
 
+    /**
+     * beforeId = null → los `size` mensajes más recientes de la conversación.
+     * beforeId != null → los `size` mensajes inmediatamente anteriores a ese id.
+     * Pide size+1 filas para saber si hay más sin necesitar un COUNT(*) aparte.
+     */
     @Transactional(readOnly = true)
-    public Page<MessageResponse> listMessages(Long conversationId, Long currentUserId,
-                                              int page, int size) {
-        ConversationModel conv = getConversationAndVerifyParticipant(conversationId, currentUserId);
-        return messageRepository
-                .findByConversationId(conversationId, PageRequest.of(page, size))
-                .map(this::toResponse);
+    public MessageCursorPage listMessages(Long conversationId, Long currentUserId,
+                                          Long beforeId, int size) {
+        getConversationAndVerifyParticipant(conversationId, currentUserId);
+
+        List<MessageModel> rows = messageRepository.findPageByConversationId(
+                conversationId, beforeId, PageRequest.of(0, size + 1));
+
+        boolean hasMore = rows.size() > size;
+        List<MessageModel> page = hasMore ? rows.subList(0, size) : rows;
+        Long nextCursor = page.isEmpty() ? null : page.get(page.size() - 1).getId();
+
+        return new MessageCursorPage(page.stream().map(this::toResponse).toList(), hasMore, nextCursor);
     }
 
     // ─── Enviar mensaje (REST + WS comparten este método) ────────────────────
@@ -45,7 +65,17 @@ public class MessageService {
         Long receiverId = conv.getUser1Id().equals(senderId)
                 ? conv.getUser2Id() : conv.getUser1Id();
 
+        if (blockedUserRepository.existsBetween(senderId, receiverId))
+            throw new AppException(AppCode.USER_BLOCKED_CONTACT);
+
         validateMessage(req);
+
+        // Se resuelve el status ANTES de construir la entidad para no pagar
+        // un segundo INSERT/UPDATE cuando el receptor ya está conectado (el
+        // caso más común) — antes se guardaba como SENT y, si correspondía,
+        // se volvía a guardar como DELIVERED en un segundo round-trip a BD.
+        MessageStatus initialStatus = sessionRegistry.hasActiveSessions(receiverId)
+                ? MessageStatus.DELIVERED : MessageStatus.SENT;
 
         MessageModel msg = MessageModel.builder()
                 .conversationId(req.conversationId())
@@ -56,10 +86,11 @@ public class MessageService {
                 .payload(req.payload())
                 .payloadType(req.payloadType())
                 .fileUrls(req.fileUrls())
-                .status(MessageStatus.SENT)
+                .status(initialStatus)
                 .build();
 
         MessageModel saved = messageRepository.save(msg);
+
         updateConversationPreview(conv, senderId, req, saved.getSentAt());
 
         return toResponse(saved);
@@ -74,13 +105,58 @@ public class MessageService {
         int updated = messageRepository.markAsRead(conversationId, currentUserId, MessageStatus.READ);
 
         if (conv.getUser1Id().equals(currentUserId)) {
-            conv.setUnreadCountUser1(0);
+            conversationRepository.resetUnreadUser1(conversationId);
         } else {
-            conv.setUnreadCountUser2(0);
+            conversationRepository.resetUnreadUser2(conversationId);
         }
-        conversationRepository.save(conv);
 
         return updated;
+    }
+
+    // ─── Borrar mensaje (soft delete) ─────────────────────────────────────────
+
+    @Transactional
+    public MessageResponse deleteMessage(Long messageId, Long currentUserId) {
+        MessageModel msg = messageRepository.findById(messageId)
+                .orElseThrow(() -> new AppException(AppCode.MSG_NOT_FOUND));
+
+        if (!msg.getSenderId().equals(currentUserId))
+            throw new AppException(AppCode.MSG_NOT_OWNER);
+        if (msg.isDeleted())
+            throw new AppException(AppCode.MSG_ALREADY_DELETED);
+
+        msg.setDeleted(true);
+        msg.setTextContent(null);
+        msg.setPayload(null);
+        msg.setFileUrls(null);
+        MessageModel saved = messageRepository.save(msg);
+
+        return toResponse(saved);
+    }
+
+    // ─── Editar mensaje ────────────────────────────────────────────────────────
+
+    @Transactional
+    public MessageResponse editMessage(Long messageId, Long currentUserId, String newText) {
+        MessageModel msg = messageRepository.findById(messageId)
+                .orElseThrow(() -> new AppException(AppCode.MSG_NOT_FOUND));
+
+        if (!msg.getSenderId().equals(currentUserId))
+            throw new AppException(AppCode.MSG_NOT_OWNER);
+        if (msg.isDeleted())
+            throw new AppException(AppCode.MSG_ALREADY_DELETED);
+        if (msg.getType() != MessageType.TEXT)
+            throw new AppException(AppCode.MSG_EDIT_NOT_TEXT);
+        if (msg.getSentAt().plus(EDIT_WINDOW_MINUTES, ChronoUnit.MINUTES).isBefore(LocalDateTime.now()))
+            throw new AppException(AppCode.MSG_EDIT_WINDOW_EXPIRED);
+        if (newText == null || newText.isBlank())
+            throw new AppException(AppCode.MSG_TEXT_REQUIRED);
+
+        msg.setTextContent(newText);
+        msg.setEditedAt(LocalDateTime.now());
+        MessageModel saved = messageRepository.save(msg);
+
+        return toResponse(saved);
     }
 
     // ─── Helpers privados ─────────────────────────────────────────────────────
@@ -107,17 +183,12 @@ public class MessageService {
     private void updateConversationPreview(ConversationModel conv, Long senderId,
                                            SendMessageRequest req, LocalDateTime sentAt) {
         String preview = buildPreview(req);
-        conv.setLastMessagePreview(preview);
-        conv.setLastMessageSenderId(senderId);
-        conv.setLastMessageAt(sentAt);
-
         boolean senderIsUser1 = conv.getUser1Id().equals(senderId);
         if (senderIsUser1) {
-            conv.setUnreadCountUser2(conv.getUnreadCountUser2() + 1);
+            conversationRepository.applyNewMessageFromUser1(conv.getId(), preview, senderId, sentAt);
         } else {
-            conv.setUnreadCountUser1(conv.getUnreadCountUser1() + 1);
+            conversationRepository.applyNewMessageFromUser2(conv.getId(), preview, senderId, sentAt);
         }
-        conversationRepository.save(conv);
     }
 
     private String buildPreview(SendMessageRequest req) {
@@ -142,7 +213,8 @@ public class MessageService {
                 m.getType(), m.getTextContent(),
                 m.getPayload(), m.getPayloadType(),
                 m.getFileUrls(), m.getStatus(),
-                m.getSentAt(), m.getReadAt()
+                m.getSentAt(), m.getReadAt(),
+                m.isDeleted(), m.getEditedAt()
         );
     }
 }

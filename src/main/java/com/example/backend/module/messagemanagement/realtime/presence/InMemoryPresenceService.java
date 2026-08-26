@@ -11,15 +11,16 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Implementación en memoria de IPresenceService.
- * Activa cuando redis.enabled=false (o no definido).
- * Estado local a la instancia — suficiente para un nodo único.
+ * Estado local a la instancia — pensado para un nodo único.
+ * Activa por defecto (app.presence.store=memory o sin definir).
+ * Para varias instancias del backend, ver RedisPresenceService.
  *
  * El método evictExpired() limpia entradas expiradas cada 60 segundos
  * para evitar crecimiento ilimitado de los mapas.
  */
 @Slf4j
 @Service
-@ConditionalOnProperty(name = "redis.enabled", havingValue = "false", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "app.presence", name = "store", havingValue = "memory", matchIfMissing = true)
 public class InMemoryPresenceService implements IPresenceService {
 
     // userId → expireEpochMs

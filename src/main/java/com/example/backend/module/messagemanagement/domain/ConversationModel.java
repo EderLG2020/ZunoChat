@@ -16,17 +16,19 @@ import java.time.LocalDateTime;
  * Regla de negocio: siempre user1Id < user2Id → garantiza unicidad con 1 fila.
  *
  * Índices:
- *   idx_conv_user1   → listado de conversaciones del usuario 1
- *   idx_conv_user2   → listado de conversaciones del usuario 2
- *   idx_conv_updated → orden cronológico (último mensaje primero)
+ *   idx_conv_user1 → listado de conversaciones del usuario 1, ya ordenadas
+ *   idx_conv_user2 → listado de conversaciones del usuario 2, ya ordenadas
+ *
+ * findAllByUserId filtra por "user1Id = :id OR user2Id = :id" — al ser compuestos
+ * con last_message_at, cada rama del OR puede resolverse como un index scan
+ * ya ordenado en vez de un bitmap-or seguido de sort en memoria.
  */
 @Entity
 @Table(
         name = "conversations",
         indexes = {
-                @Index(name = "idx_conv_user1",   columnList = "user1_id"),
-                @Index(name = "idx_conv_user2",   columnList = "user2_id"),
-                @Index(name = "idx_conv_updated", columnList = "last_message_at DESC")
+                @Index(name = "idx_conv_user1", columnList = "user1_id, last_message_at DESC"),
+                @Index(name = "idx_conv_user2", columnList = "user2_id, last_message_at DESC")
         },
         uniqueConstraints = {
                 @UniqueConstraint(name = "uk_conv_participants", columnNames = {"user1_id", "user2_id"})
@@ -90,6 +92,16 @@ public class ConversationModel {
     @Column(name = "unread_count_user2", nullable = false)
     @Builder.Default
     private Integer unreadCountUser2 = 0;
+
+    // ─── Silenciado (por lado, como los contadores de no leídos) ─────────────
+
+    @Column(name = "muted_user1", nullable = false)
+    @Builder.Default
+    private boolean mutedUser1 = false;
+
+    @Column(name = "muted_user2", nullable = false)
+    @Builder.Default
+    private boolean mutedUser2 = false;
 
     @UpdateTimestamp
     @Column(name = "updated_at")

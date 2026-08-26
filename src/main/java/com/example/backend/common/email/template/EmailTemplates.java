@@ -115,6 +115,29 @@ public final class EmailTemplates {
         return baseWrapper(body);
     }
 
+    // ─── PASSWORD_RESET_OTP ──────────────────────────────────────────────────
+
+    /**
+     * Correo con el código OTP de 6 dígitos para restablecer la contraseña
+     * (distinto de otpVerification: ese es para activar la cuenta al registrarse).
+     */
+    public static String passwordResetOtp(String username, String otpCode) {
+        String body = heading("Restablece tu contraseña") +
+                paragraph("Hola <strong style=\"color:#f0f0f0;\">%s</strong>, recibimos una solicitud para restablecer la contraseña de tu cuenta."
+                        .formatted(username)) +
+                paragraph("Usa el siguiente código para continuar. Válido por <strong style=\"color:#f0f0f0;\">10 minutos</strong>.") +
+                """
+                <div style="margin:24px 0;padding:20px;background:#0f0f0f;border-radius:12px;
+                            border:1px dashed #00c9a7;text-align:center;">
+                  <span style="font-size:40px;font-weight:800;letter-spacing:12px;color:#00c9a7;">%s</span>
+                </div>
+                """.formatted(otpCode) +
+                divider() +
+                paragraph("Si no solicitaste este cambio, ignora este correo — tu contraseña actual sigue siendo válida.");
+
+        return baseWrapper(body);
+    }
+
     // ─── WELCOME ─────────────────────────────────────────────────────────────
 
     /**

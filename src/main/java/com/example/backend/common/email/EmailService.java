@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.env.Environment;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -59,7 +60,13 @@ public class EmailService {
     private String brevoFromName;
 
     // ─── Métodos públicos por tipo de correo ─────────────────────────────────
+    //
+    // Todos son @Async: el caller (AuthService, etc.) no espera la respuesta
+    // de Brevo para devolver su propia respuesta HTTP. Antes, cada registro o
+    // verificación de OTP quedaba bloqueado en el hilo del request hasta que
+    // Brevo contestaba.
 
+    @Async("emailExecutor")
     public void sendOtp(String toEmail, String username, String otpCode) {
         if (!shouldSend()) {
             log.info("[EmailService] email.enabled=false — OTP para {} no enviado. Código: {}",
@@ -72,6 +79,20 @@ public class EmailService {
                 EmailType.OTP_VERIFICATION);
     }
 
+    @Async("emailExecutor")
+    public void sendPasswordResetOtp(String toEmail, String username, String otpCode) {
+        if (!shouldSend()) {
+            log.info("[EmailService] email.enabled=false — OTP de reset para {} no enviado. Código: {}",
+                    toEmail, isDev() ? otpCode : "***");
+            return;
+        }
+        send(toEmail, username,
+                "Restablece tu contraseña — ZunoChat",
+                EmailTemplates.passwordResetOtp(username, otpCode),
+                EmailType.OTP_VERIFICATION);
+    }
+
+    @Async("emailExecutor")
     public void sendWelcome(String toEmail, String username, String bannerUrl) {
         if (!shouldSend()) {
             log.info("[EmailService] email.enabled=false — Bienvenida para {} no enviada.", toEmail);
@@ -85,6 +106,7 @@ public class EmailService {
                 EmailType.WELCOME);
     }
 
+    @Async("emailExecutor")
     public void sendAccountStatusChanged(String toEmail, String username,
                                          String newStatus, String reason) {
         if (!shouldSend()) {
@@ -102,6 +124,7 @@ public class EmailService {
                 EmailType.ACCOUNT_STATUS_CHANGED);
     }
 
+    @Async("emailExecutor")
     public void sendPasswordResetConfirm(String toEmail, String username) {
         if (!shouldSend()) {
             log.info("[EmailService] email.enabled=false — Reset para {} no enviado.", toEmail);

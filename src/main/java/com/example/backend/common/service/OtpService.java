@@ -17,6 +17,9 @@ public class OtpService {
     /** Tiempo de vida del OTP en minutos */
     private static final int OTP_EXPIRATION_MINUTES = 10;
 
+    /** Ventana mínima entre reenvíos, para no dejar spamear el endpoint de reenvío */
+    private static final int RESEND_COOLDOWN_SECONDS = 60;
+
     private final SecureRandom random = new SecureRandom();
 
     /**
@@ -44,5 +47,16 @@ public class OtpService {
     public boolean isValid(String storedOtp, String inputOtp, LocalDateTime expiration) {
         if (storedOtp == null || inputOtp == null || expiration == null) return false;
         return storedOtp.equals(inputOtp) && LocalDateTime.now().isBefore(expiration);
+    }
+
+    /**
+     * true si ya pasó el cooldown desde que se generó el último OTP (deducido
+     * a partir de su expiración, ya que no guardamos "generatedAt" aparte).
+     * currentExpiration = null → nunca se generó uno, siempre se puede pedir.
+     */
+    public boolean canResend(LocalDateTime currentExpiration) {
+        if (currentExpiration == null) return true;
+        LocalDateTime generatedAt = currentExpiration.minusMinutes(OTP_EXPIRATION_MINUTES);
+        return LocalDateTime.now().isAfter(generatedAt.plusSeconds(RESEND_COOLDOWN_SECONDS));
     }
 }

@@ -25,5 +25,7 @@ public record WsOutboundMessage(
         PayloadType payloadType,
         List<String> fileUrls,
         MessageStatus status,
-        LocalDateTime sentAt
+        LocalDateTime sentAt,
+        boolean deleted,
+        LocalDateTime editedAt
 ) {}

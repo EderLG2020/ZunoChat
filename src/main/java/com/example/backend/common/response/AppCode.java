@@ -32,6 +32,17 @@ public enum AppCode {
     OK_ROLE_ASSIGNED        (HttpStatus.OK,                    "Rol asignado correctamente"),
     OK_USER_DELETED         (HttpStatus.OK,                    "Usuario eliminado correctamente"),
     OK_USERS_LISTED         (HttpStatus.OK,                    "Usuarios obtenidos correctamente"),
+    OK_PASSWORD_RESET_SENT  (HttpStatus.OK,                    "Si el correo existe, enviamos un código para restablecer la contraseña"),
+    OK_PASSWORD_RESET       (HttpStatus.OK,                    "Contraseña restablecida correctamente"),
+    OK_OTP_RESENT           (HttpStatus.OK,                    "Código reenviado. Revisa tu correo"),
+    OK_TOKEN_REFRESHED      (HttpStatus.OK,                    "Sesión renovada"),
+    OK_MESSAGE_DELETED      (HttpStatus.OK,                    "Mensaje eliminado"),
+    OK_MESSAGE_EDITED       (HttpStatus.OK,                    "Mensaje editado"),
+    OK_USER_BLOCKED         (HttpStatus.OK,                    "Usuario bloqueado"),
+    OK_USER_UNBLOCKED       (HttpStatus.OK,                    "Usuario desbloqueado"),
+    OK_CONVERSATION_MUTED   (HttpStatus.OK,                    "Conversación silenciada"),
+    OK_CONVERSATION_UNMUTED (HttpStatus.OK,                    "Conversación reactivada"),
+    OK_FILES_UPLOADED       (HttpStatus.CREATED,               "Archivo(s) subido(s) correctamente"),
 
     // ─── Auth ─────────────────────────────────────────────────────────────────
 
@@ -40,6 +51,8 @@ public enum AppCode {
     AUTH_TOKEN_INVALID      (HttpStatus.UNAUTHORIZED,          "El token JWT es inválido o está malformado"),
     AUTH_TOKEN_MISSING      (HttpStatus.UNAUTHORIZED,          "Se requiere autenticación"),
     AUTH_FORBIDDEN          (HttpStatus.FORBIDDEN,             "No tienes permisos para realizar esta acción"),
+    AUTH_REFRESH_EXPIRED    (HttpStatus.UNAUTHORIZED,          "La sesión expiró hace demasiado tiempo. Vuelve a iniciar sesión"),
+    AUTH_RATE_LIMITED       (HttpStatus.TOO_MANY_REQUESTS,     "Demasiados intentos. Espera unos minutos antes de volver a intentar"),
 
     // ─── Usuario ──────────────────────────────────────────────────────────────
 
@@ -50,12 +63,19 @@ public enum AppCode {
     USER_DNI_EXISTS         (HttpStatus.CONFLICT,              "El DNI ya está registrado"),
     USER_USERNAME_EXISTS    (HttpStatus.CONFLICT,              "El nombre de usuario ya está en uso"),
     USER_EMAIL_EXISTS       (HttpStatus.CONFLICT,              "El correo electrónico ya está registrado"),
+    USER_SELF_ACTION        (HttpStatus.BAD_REQUEST,           "No puedes realizar esta acción sobre tu propia cuenta"),
+    USER_ROLE_INVALID       (HttpStatus.BAD_REQUEST,           "Rol inválido"),
+    USER_INSUFFICIENT_RANK  (HttpStatus.FORBIDDEN,             "No tienes rango suficiente para moderar a este usuario"),
+    USER_ALREADY_BLOCKED    (HttpStatus.CONFLICT,              "Ya bloqueaste a este usuario"),
+    USER_NOT_BLOCKED        (HttpStatus.BAD_REQUEST,           "No has bloqueado a este usuario"),
+    USER_BLOCKED_CONTACT    (HttpStatus.FORBIDDEN,             "No puedes enviar mensajes a este usuario"),
 
     // ─── OTP ──────────────────────────────────────────────────────────────────
 
     OTP_INVALID             (HttpStatus.BAD_REQUEST,           "El código OTP es incorrecto"),
-    OTP_EXPIRED             (HttpStatus.BAD_REQUEST,           "El código OTP ha expirado. Solicita uno nuevo"),
+    OTP_EXPIRED              (HttpStatus.BAD_REQUEST,           "El código OTP ha expirado. Solicita uno nuevo"),
     OTP_PENDING_REQUIRED    (HttpStatus.FORBIDDEN,             "Debes verificar tu correo antes de iniciar sesión"),
+    OTP_RESEND_TOO_SOON     (HttpStatus.TOO_MANY_REQUESTS,     "Espera un momento antes de solicitar otro código"),
 
     // ─── Conversaciones ───────────────────────────────────────────────────────
     CONV_NOT_FOUND          (HttpStatus.NOT_FOUND,             "Conversación no encontrada"),
@@ -67,6 +87,15 @@ public enum AppCode {
     MSG_FILE_REQUIRED       (HttpStatus.BAD_REQUEST,           "Debes adjuntar al menos un archivo"),
     MSG_FILE_LIMIT          (HttpStatus.BAD_REQUEST,           "Se permiten máximo 3 archivos por mensaje"),
     MSG_NOT_FOUND           (HttpStatus.NOT_FOUND,             "Mensaje no encontrado"),
+    MSG_NOT_OWNER           (HttpStatus.FORBIDDEN,             "Solo puedes modificar tus propios mensajes"),
+    MSG_ALREADY_DELETED     (HttpStatus.BAD_REQUEST,           "Este mensaje ya fue eliminado"),
+    MSG_EDIT_NOT_TEXT       (HttpStatus.BAD_REQUEST,           "Solo se pueden editar mensajes de texto"),
+    MSG_EDIT_WINDOW_EXPIRED (HttpStatus.BAD_REQUEST,           "Ya pasó el tiempo permitido para editar este mensaje"),
+
+    // ─── Archivos ─────────────────────────────────────────────────────────────
+    UPLOAD_FILE_EMPTY       (HttpStatus.BAD_REQUEST,           "El archivo está vacío"),
+    UPLOAD_FILE_TOO_LARGE   (HttpStatus.BAD_REQUEST,           "El archivo supera el tamaño máximo permitido"),
+    UPLOAD_TOO_MANY_FILES   (HttpStatus.BAD_REQUEST,           "Se permiten máximo 3 archivos por solicitud"),
 
     // ─── Validación ───────────────────────────────────────────────────────────
 

@@ -19,5 +19,7 @@ public record MessageResponse(
         List<String> fileUrls,
         MessageStatus status,
         LocalDateTime sentAt,
-        LocalDateTime readAt
+        LocalDateTime readAt,
+        boolean deleted,
+        LocalDateTime editedAt
 ) {}

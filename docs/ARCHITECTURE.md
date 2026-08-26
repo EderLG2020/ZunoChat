@@ -78,13 +78,13 @@ JwtFilter   JwtHandshakeInterceptor (WS handshake ?token=)
   Conversation,       │
   Message,    ┌───────┴───────┐
   AppConfig)  IPresenceService  IMessageProducer
-              (Redis | Memory)  (Rabbit | Direct)
+              (en memoria)      (broadcast directo)
                      │
               Services → Repositories → PostgreSQL
 ```
 
 **Principios clave:**
-- Interfaces intercambiables: `IPresenceService`, `IWebSocketSessionRegistry`, `IMessageProducer` — Redis/RabbitMQ en prod, en memoria en dev.
+- Interfaces `IPresenceService`, `IWebSocketSessionRegistry`, `IMessageProducer` con una única implementación en memoria/directa — pensado para una sola instancia del backend (sin Redis/RabbitMQ).
 - Respuesta unificada `ApiResponse<T>` en todos los endpoints.
 - Stateless: el estado de autenticación viaja completamente en el JWT.
 - `Conversation` desnormaliza usernames para evitar JOINs frecuentes.

@@ -9,8 +9,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * Evento de mensaje encolado en RabbitMQ.
- * Transporta la información completa del mensaje para procesamiento asíncrono.
+ * Evento de mensaje para broadcast por WebSocket.
+ * Transporta la información completa del mensaje.
  */
 public record MessageEvent(
         Long messageId,
@@ -25,5 +25,7 @@ public record MessageEvent(
         PayloadType payloadType,
         List<String> fileUrls,
         MessageStatus status,
-        LocalDateTime sentAt
+        LocalDateTime sentAt,
+        boolean deleted,
+        LocalDateTime editedAt
 ) implements Serializable {}

@@ -38,7 +38,11 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/api/auth/register",
                                 "/api/auth/verify-otp",
-                                "/api/auth/login"
+                                "/api/auth/login",
+                                "/api/auth/resend-otp",
+                                "/api/auth/forgot-password",
+                                "/api/auth/reset-password",
+                                "/api/auth/refresh"
                         ).permitAll()
 
                         // WebSocket — la autenticación se hace vía STOMP (StompAuthChannelInterceptor)
@@ -46,6 +50,12 @@ public class SecurityConfig {
                                 "/ws/**",
                                 "/ws/info/**"
                         ).permitAll()
+
+                        // Archivos servidos por el proveedor "local" (StaticUploadsConfig) — deben
+                        // ser públicos para que un <img src="..."> los cargue sin Authorization.
+                        // POST /api/uploads (el endpoint que los sube) NO está acá — sigue
+                        // cayendo en anyRequest().authenticated() de abajo.
+                        .requestMatchers("/uploads/**").permitAll()
 
                         .anyRequest().authenticated()
                 )

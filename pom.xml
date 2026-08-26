@@ -39,6 +39,21 @@
             <artifactId>spring-boot-starter-websocket</artifactId>
         </dependency>
 
+        <!--
+          Requerido por registry.enableStompBrokerRelay() (ver WebSocketConfig,
+          activo solo con app.websocket.relay.enabled=true) — Spring construye
+          el cliente TCP hacia el broker externo (RabbitMQ) con
+          ReactorNettyTcpClient. spring-boot-starter-websocket no trae
+          reactor-netty por defecto; probamos primero solo reactor-netty-core
+          pero Spring necesita el paquete completo para detectarlo (si no,
+          falla con "No compatible version of Reactor Netty" recién al
+          arrancar el relay, no en compilación).
+        -->
+        <dependency>
+            <groupId>io.projectreactor.netty</groupId>
+            <artifactId>reactor-netty</artifactId>
+        </dependency>
+
         <!-- SECURITY -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -51,22 +66,23 @@
             <artifactId>spring-boot-starter-data-jpa</artifactId>
         </dependency>
 
-        <!-- VALIDATION -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-validation</artifactId>
-        </dependency>
-
-        <!-- REDIS -->
+        <!-- REDIS (presencia/sesiones WS compartidas entre instancias — opcional, ver app.presence.store) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>
 
-        <!-- RABBITMQ / AMQP -->
+        <!-- CLOUDINARY (subida de archivos — opcional, ver app.storage.provider) -->
+        <dependency>
+            <groupId>com.cloudinary</groupId>
+            <artifactId>cloudinary-http5</artifactId>
+            <version>2.4.0</version>
+        </dependency>
+
+        <!-- VALIDATION -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-amqp</artifactId>
+            <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
 
         <!-- POSTGRESQL -->
@@ -131,7 +147,7 @@
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
-            <version>1.18.32</version>
+            <version>1.18.46</version>
             <optional>true</optional>
         </dependency>
 

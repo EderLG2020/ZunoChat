@@ -25,7 +25,7 @@ import java.util.List;
  *  - Imágenes
  *
  * Índices:
- *   idx_msg_conversation  → listar mensajes de una conversación (ORDER BY sent_at DESC)
+ *   idx_msg_conversation  → listar mensajes de una conversación por cursor (ORDER BY id DESC)
  *   idx_msg_sender        → historial de mensajes por emisor
  *   idx_msg_status        → filtrar por estado (para marcar como visto en lote)
  */
@@ -33,7 +33,7 @@ import java.util.List;
 @Table(
         name = "messages",
         indexes = {
-                @Index(name = "idx_msg_conversation", columnList = "conversation_id, sent_at DESC"),
+                @Index(name = "idx_msg_conversation", columnList = "conversation_id, id DESC"),
                 @Index(name = "idx_msg_sender",       columnList = "sender_id"),
                 @Index(name = "idx_msg_status",       columnList = "status")
         }
@@ -100,6 +100,17 @@ public class MessageModel {
 
     @Column(name = "read_at")
     private LocalDateTime readAt;
+
+    // ─── Edición / borrado ────────────────────────────────────────────────────
+
+    /** Soft delete: el contenido se limpia y el cliente muestra un tombstone. */
+    @Column(name = "deleted", nullable = false)
+    @Builder.Default
+    private boolean deleted = false;
+
+    /** No-null solo si el mensaje fue editado (distingue "editado" de "nunca tocado"). */
+    @Column(name = "edited_at")
+    private LocalDateTime editedAt;
 
     // ─── Auditoría ────────────────────────────────────────────────────────────
 

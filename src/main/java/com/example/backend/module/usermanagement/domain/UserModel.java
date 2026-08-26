@@ -20,6 +20,11 @@ import java.time.LocalDateTime;
         @UniqueConstraint(name = "uk_users_username", columnNames = "username"),
         @UniqueConstraint(name = "uk_users_email",    columnNames = "email"),
         @UniqueConstraint(name = "uk_users_dni",      columnNames = "dni")
+    },
+    indexes = {
+        // Permite que la búsqueda de usuarios (prefijo) use un índice en vez de
+        // escanear toda la tabla calculando LOWER(username) fila por fila.
+        @Index(name = "idx_users_username_lower", columnList = "username_lower")
     }
 )
 @Getter
@@ -41,6 +46,10 @@ public class UserModel {
     /** Nombre de usuario único, visible públicamente */
     @Column(nullable = false, length = 50)
     private String username;
+
+    /** Copia en minúsculas de username, mantenida automáticamente — soporta búsqueda indexada case-insensitive */
+    @Column(name = "username_lower", nullable = false, length = 50)
+    private String usernameLower;
 
     @Column(nullable = false, length = 120)
     private String email;
@@ -83,6 +92,12 @@ public class UserModel {
     private Long updatedBy;
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
+
+    @PrePersist
+    @PreUpdate
+    private void syncUsernameLower() {
+        this.usernameLower = this.username == null ? null : this.username.toLowerCase();
+    }
 
     public boolean isActive() {
         return this.status == UserStatus.ACTIVE;

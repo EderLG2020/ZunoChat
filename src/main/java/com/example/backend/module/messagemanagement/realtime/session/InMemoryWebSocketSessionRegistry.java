@@ -10,11 +10,13 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Registro de sesiones WebSocket en memoria.
- * Activa cuando redis.enabled=false (o no definido).
+ * Estado local a la instancia — pensado para un nodo único.
+ * Activo por defecto (app.presence.store=memory o sin definir).
+ * Para varias instancias del backend, ver RedisWebSocketSessionRegistry.
  */
 @Slf4j
 @Component
-@ConditionalOnProperty(name = "redis.enabled", havingValue = "false", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "app.presence", name = "store", havingValue = "memory", matchIfMissing = true)
 public class InMemoryWebSocketSessionRegistry implements IWebSocketSessionRegistry {
 
     // userId → Set<sessionId>

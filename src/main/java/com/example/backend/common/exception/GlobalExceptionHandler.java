@@ -2,6 +2,8 @@ package com.example.backend.common.exception;
 
 import com.example.backend.common.response.ApiResponse;
 import com.example.backend.common.response.AppCode;
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
@@ -25,6 +27,24 @@ public class GlobalExceptionHandler {
         Map<String, String> fieldErrors = new HashMap<>();
         for (FieldError fe : ex.getBindingResult().getFieldErrors()) {
             fieldErrors.put(fe.getField(), fe.getDefaultMessage());
+        }
+        return ResponseEntity
+                .status(AppCode.VALID_FIELDS.getHttpStatus())
+                .body(ApiResponse.validationError(fieldErrors));
+    }
+
+    /**
+     * Errores de validación en @RequestParam/@PathVariable (ej: size > @Max) →
+     * VALID_FIELDS. Distinta de MethodArgumentNotValidException, que solo
+     * cubre @Valid sobre @RequestBody.
+     */
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ApiResponse<?>> handleConstraintViolation(ConstraintViolationException ex) {
+        Map<String, String> fieldErrors = new HashMap<>();
+        for (ConstraintViolation<?> v : ex.getConstraintViolations()) {
+            String path = v.getPropertyPath().toString();
+            String field = path.contains(".") ? path.substring(path.lastIndexOf('.') + 1) : path;
+            fieldErrors.put(field, v.getMessage());
         }
         return ResponseEntity
                 .status(AppCode.VALID_FIELDS.getHttpStatus())

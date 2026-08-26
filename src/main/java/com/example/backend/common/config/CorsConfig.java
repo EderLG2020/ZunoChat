@@ -15,11 +15,17 @@ public class CorsConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
 
-        // Orígenes permitidos (frontend dev + cualquier otro que uses)
+        // Orígenes permitidos (frontend dev + cualquier otro que uses).
+        // Nota: esto solo aplica a requests que llegan con header Origin
+        // (navegadores). Los clientes HTTP nativos de la app móvil (Android/iOS)
+        // no envían Origin, así que no les afecta el CORS — se agregan aquí los
+        // puertos de `expo start --web` para poder probar esa app en el navegador.
         config.setAllowedOrigins(List.of(
                 "http://localhost:5173",
                 "http://localhost:3000",
-                "http://localhost:4200"
+                "http://localhost:4200",
+                "http://localhost:8081",
+                "http://localhost:19006"
         ));
 
         // Métodos HTTP permitidos
