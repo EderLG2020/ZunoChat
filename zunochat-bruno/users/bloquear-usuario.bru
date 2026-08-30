@@ -1,0 +1,35 @@
+meta {
+  name: POST /users/{id}/block
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{base_url}}/api/users/4/block
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+docs {
+  Reemplaza {id} por el ID numérico del usuario a bloquear.
+  El bloqueo es direccional (solo lo aplica quien bloquea) pero se revisa en
+  AMBOS sentidos al enviar un mensaje — si A bloqueó a B, ni A ni B pueden
+  mandarse mensajes hasta que A desbloquee.
+
+  Respuesta
+  Errores
+
+  HTTP 200
+  "Usuario bloqueado"
+
+  400
+  No puedes bloquearte a ti mismo (USER_SELF_ACTION)
+  404
+  Usuario no encontrado
+  409
+  Ya bloqueaste a este usuario (USER_ALREADY_BLOCKED)
+}

@@ -1,6 +1,7 @@
 package com.example.backend.module.usermanagement.domain;
 
 import com.example.backend.common.enums.Role;
+import com.example.backend.common.enums.ThemePreference;
 import com.example.backend.common.enums.UserStatus;
 import jakarta.persistence.*;
 import lombok.*;
@@ -54,9 +55,17 @@ public class UserModel {
     @Column(nullable = false, length = 120)
     private String email;
 
+    /** Opcional — el usuario lo carga desde Configuración; null hasta entonces. */
+    @Column(length = 20)
+    private String phone;
+
     /** Contraseña encriptada con BCrypt */
     @Column(nullable = false)
     private String password;
+
+    /** URL de la foto de perfil. Nula hasta que el usuario suba una. */
+    @Column(length = 500)
+    private String avatar;
 
     // ─── Seguridad / Roles ───────────────────────────────────────────────────
 
@@ -69,6 +78,16 @@ public class UserModel {
     @Column(nullable = false, length = 30)
     @Builder.Default
     private UserStatus status = UserStatus.PENDING_VERIFICATION;
+
+    /**
+     * Preferencia de tema (claro/oscuro), sincronizada entre dispositivos.
+     * columnDefinition con DEFAULT: sin esto, el ALTER TABLE que agrega la
+     * columna NOT NULL falla en filas ya existentes (no hay valor que asignarles).
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 10, columnDefinition = "varchar(10) default 'LIGHT'")
+    @Builder.Default
+    private ThemePreference themePreference = ThemePreference.LIGHT;
 
     // ─── Verificación OTP ────────────────────────────────────────────────────
 

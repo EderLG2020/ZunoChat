@@ -1,0 +1,51 @@
+meta {
+  name: Subir archivo
+  type: http
+  seq: 9
+}
+
+post {
+  url: {{base_url}}/api/uploads
+  body: multipartForm
+  auth: inherit
+}
+
+body:multipart-form {
+  files: @file()
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
+
+docs {
+  Campo "files" — hasta 3 archivos, 5MB c/u (límites configurables por
+  app.storage.max-file-size-mb / max-files-per-request). En el cliente de
+  Bruno: click en el valor del campo "files" en la pestaña Body y seleccionar
+  el/los archivo(s) desde el explorador.
+
+  El proveedor real (disco local o Cloudinary) lo decide app.storage.provider
+  en el .env del backend — este endpoint no cambia según cuál esté activo.
+
+  Las URLs que devuelve van directo en SendMessageRequest#fileUrls al enviar
+  el mensaje (POST /api/messages con type=IMAGE o type=FILE).
+
+  Respuesta
+  Errores
+
+  HTTP 201
+  {
+    "urls": [
+      "http://localhost:8080/uploads/3/8f2c1a-foto.jpg"
+    ]
+  }
+  Con Cloudinary, las URLs son del dominio de Cloudinary en vez de /uploads/**.
+
+  400
+  El archivo está vacío (UPLOAD_FILE_EMPTY)
+  400
+  El archivo supera el tamaño máximo permitido (UPLOAD_FILE_TOO_LARGE)
+  400
+  Se permiten máximo 3 archivos por solicitud (UPLOAD_TOO_MANY_FILES)
+}

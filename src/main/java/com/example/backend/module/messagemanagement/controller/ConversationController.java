@@ -7,7 +7,9 @@ import com.example.backend.common.util.JwtUtil;
 import com.example.backend.module.messagemanagement.application.ConversationService;
 import com.example.backend.module.messagemanagement.dto.ConversationResponse;
 import com.example.backend.module.messagemanagement.dto.CreateConversationRequest;
+import com.example.backend.module.messagemanagement.dto.CreateGroupRequest;
 import com.example.backend.module.messagemanagement.dto.MuteConversationRequest;
+import com.example.backend.module.messagemanagement.dto.SetEphemeralRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -59,6 +61,19 @@ public class ConversationController {
                 .body(ApiResponse.ok(AppCode.OK_CREATED, result));
     }
 
+    /**
+     * Crea un grupo con el usuario autenticado como creador.
+     * memberIds no incluye al creador — se agrega automáticamente.
+     */
+    @PostMapping("/group")
+    public ResponseEntity<ApiResponse<ConversationResponse>> createGroup(@Valid @RequestBody CreateGroupRequest req) {
+        Long userId = JwtUtil.currentUserId();
+        ConversationResponse result = conversationService.createGroup(userId, req);
+        return ResponseEntity
+                .status(AppCode.OK_CREATED.getHttpStatus())
+                .body(ApiResponse.ok(AppCode.OK_CREATED, result));
+    }
+
     /** Silencia/reactiva la conversación solo para el usuario autenticado. */
     @PatchMapping("/{id}/mute")
     public ResponseEntity<ApiResponse<ConversationResponse>> mute(@PathVariable Long id, @RequestBody MuteConversationRequest req) {
@@ -66,5 +81,13 @@ public class ConversationController {
         ConversationResponse result = conversationService.setMuted(userId, id, req.muted());
         AppCode code = req.muted() ? AppCode.OK_CONVERSATION_MUTED : AppCode.OK_CONVERSATION_UNMUTED;
         return ResponseEntity.ok(ApiResponse.ok(code, result));
+    }
+
+    /** Prende/apaga el chat temporal — afecta a la conversación entera, no solo al usuario autenticado. */
+    @PatchMapping("/{id}/ephemeral")
+    public ResponseEntity<ApiResponse<ConversationResponse>> setEphemeral(@PathVariable Long id, @RequestBody SetEphemeralRequest req) {
+        Long userId = JwtUtil.currentUserId();
+        ConversationResponse result = conversationService.setEphemeral(userId, id, req.enabled());
+        return ResponseEntity.ok(ApiResponse.ok(AppCode.OK_GENERIC, result));
     }
 }

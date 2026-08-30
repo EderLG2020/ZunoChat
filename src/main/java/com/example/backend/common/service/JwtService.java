@@ -43,7 +43,19 @@ public class JwtService {
 
     // ─── Generación ──────────────────────────────────────────────────────────
 
+    /** Primer login/registro/verify-otp — la sesión empieza AHORA. */
     public String generateToken(UserModel user) {
+        return generateToken(user, System.currentTimeMillis());
+    }
+
+    /**
+     * Usado por /api/auth/refresh para renovar el token PRESERVANDO el
+     * momento del primer login (sessionStartMillis) en vez de reiniciarlo.
+     * Sin esto, cada refresh reseteaba el reloj y un token robado podía
+     * renovarse indefinidamente mientras se refrescara al menos una vez
+     * dentro de la ventana de expiración — ver AuthService#refresh.
+     */
+    public String generateToken(UserModel user, long sessionStartMillis) {
         List<String> permissions = user.getRole().getPermissions();
 
         return Jwts.builder()
@@ -51,6 +63,7 @@ public class JwtService {
                 .claim("role", user.getRole().name())
                 .claim("permissions", permissions)   // ← permisos granulares
                 .claim("userId", user.getId())
+                .claim("sessionStart", sessionStartMillis)
                 .setIssuedAt(new Date())
                 .setExpiration(new Date(System.currentTimeMillis() + EXPIRATION_MS))
                 .signWith(secretKey, SignatureAlgorithm.HS256)

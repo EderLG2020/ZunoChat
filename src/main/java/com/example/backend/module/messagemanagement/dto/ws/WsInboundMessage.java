@@ -28,5 +28,9 @@ public record WsInboundMessage(
         PayloadType payloadType,
 
         @Size(max = 3)
-        List<String> fileUrls
+        List<String> fileUrls,
+
+        /** Ver SendMessageRequest#clientMessageId — mismo mecanismo de idempotencia para el envío por WS. */
+        @Size(max = 64)
+        String clientMessageId
 ) {}

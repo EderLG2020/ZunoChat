@@ -43,6 +43,7 @@ public enum AppCode {
     OK_CONVERSATION_MUTED   (HttpStatus.OK,                    "Conversación silenciada"),
     OK_CONVERSATION_UNMUTED (HttpStatus.OK,                    "Conversación reactivada"),
     OK_FILES_UPLOADED       (HttpStatus.CREATED,               "Archivo(s) subido(s) correctamente"),
+    OK_THEME_UPDATED        (HttpStatus.OK,                    "Preferencia de tema actualizada"),
 
     // ─── Auth ─────────────────────────────────────────────────────────────────
 
@@ -80,12 +81,20 @@ public enum AppCode {
     // ─── Conversaciones ───────────────────────────────────────────────────────
     CONV_NOT_FOUND          (HttpStatus.NOT_FOUND,             "Conversación no encontrada"),
     CONV_SELF_CONVERSATION  (HttpStatus.BAD_REQUEST,           "No puedes iniciar una conversación contigo mismo"),
+    CONV_GROUP_MIN_MEMBERS  (HttpStatus.BAD_REQUEST,           "Un grupo necesita al menos 2 miembros además de ti"),
+
+    // ─── Racha (streak) ───────────────────────────────────────────────────────
+    STREAK_NOT_DIRECT        (HttpStatus.BAD_REQUEST,          "La racha solo aplica a conversaciones directas"),
+    STREAK_NO_PENDING_REQUEST(HttpStatus.BAD_REQUEST,          "No hay una solicitud de racha pendiente para esta conversación"),
+    STREAK_OWN_REQUEST       (HttpStatus.BAD_REQUEST,          "No puedes responder tu propia solicitud de racha"),
 
     // ─── Mensajes ─────────────────────────────────────────────────────────────
     MSG_TEXT_REQUIRED       (HttpStatus.BAD_REQUEST,           "El contenido de texto es obligatorio para mensajes de tipo TEXT"),
     MSG_PAYLOAD_REQUIRED    (HttpStatus.BAD_REQUEST,           "El payload es obligatorio para mensajes de tipo PAYLOAD"),
     MSG_FILE_REQUIRED       (HttpStatus.BAD_REQUEST,           "Debes adjuntar al menos un archivo"),
     MSG_FILE_LIMIT          (HttpStatus.BAD_REQUEST,           "Se permiten máximo 3 archivos por mensaje"),
+    MSG_PAYLOAD_TOO_LARGE   (HttpStatus.BAD_REQUEST,           "El payload es demasiado grande"),
+    MSG_CLIENT_ID_CONFLICT  (HttpStatus.CONFLICT,              "Ese clientMessageId ya se usó para otro mensaje"),
     MSG_NOT_FOUND           (HttpStatus.NOT_FOUND,             "Mensaje no encontrado"),
     MSG_NOT_OWNER           (HttpStatus.FORBIDDEN,             "Solo puedes modificar tus propios mensajes"),
     MSG_ALREADY_DELETED     (HttpStatus.BAD_REQUEST,           "Este mensaje ya fue eliminado"),

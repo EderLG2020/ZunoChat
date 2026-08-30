@@ -27,5 +27,6 @@ public record WsOutboundMessage(
         MessageStatus status,
         LocalDateTime sentAt,
         boolean deleted,
-        LocalDateTime editedAt
+        LocalDateTime editedAt,
+        LocalDateTime expiresAt
 ) {}

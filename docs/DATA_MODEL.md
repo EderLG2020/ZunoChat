@@ -51,4 +51,21 @@ Reglas
 | file_urls | JSONB | Array de URLs (máx. 3) |
 | status | ENUM | `SENT`, `DELIVERED`, `READ` |
 
+### `streaks`
+| Campo | Tipo | Descripción |
+|---|---|---|
+| id | BIGINT PK | Autogenerado |
+| conversation_id | BIGINT | Único — una fila por conversación DIRECT con racha activada; no se crea hasta que alguien la solicita |
+| user_a_id / user_b_id | BIGINT | `userAId < userBId`, mismo criterio que `conversations` (no indica quién empezó) |
+| current_count / longest_count | INT | Días consecutivos actuales / récord histórico |
+| last_interaction_date | DATE | Último día (UTC) en que **ambos** escribieron — el que hace avanzar `currentCount` |
+| last_message_date_a / last_message_date_b | DATE | Último día (UTC) en que cada lado escribió, por separado, para detectar cuándo se completa el día mutuo |
+| enabled | BOOLEAN | Solo `true` cuando ambos aceptaron el opt-in |
+| requested_by_user_id | BIGINT | Quién envió la solicitud pendiente; `NULL` si no hay ninguna en curso |
+| request_status | ENUM | `NONE`, `PENDING`, `ACCEPTED`, `DECLINED` |
+| status | ENUM | `INACTIVE`, `ACTIVE`, `AT_RISK`, `BROKEN` |
+| version | BIGINT | Lock optimista de respaldo (la concurrencia real la resuelve un `PESSIMISTIC_WRITE` en el repositorio) |
+
+> No hay migraciones (Flyway/Liquibase) en el proyecto. En dev (`ddl-auto=update`) la tabla se crea sola; en **prod** (`ddl-auto=validate`) hay que aplicar el DDL de `streaks` manualmente antes de desplegar esta versión.
+
 ---

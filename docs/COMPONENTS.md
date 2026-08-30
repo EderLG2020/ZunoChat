@@ -288,6 +288,67 @@ GET /api/users/search?q={término}
 
 ---
 
+## 7. Módulo `streak` — Racha entre Usuarios
+
+**Paquete:** `module/streak` · **Controlador:** `StreakController → /api/streaks`
+
+Cuenta los días consecutivos (UTC) en que dos usuarios de una conversación `DIRECT` intercambiaron al menos un mensaje cada uno. Es **opt-in mutuo**: ninguna conversación cuenta racha por defecto, y activarla requiere que ambos participantes acepten (una solicitud enviada desde Configuración/el chat), a diferencia de desactivarla, que es unilateral e inmediato.
+
+```
+[MessageService.sendMessage()] ── tras persistir el mensaje, solo si !isGroup ──┐
+                                                                                 │
+                                                                                 ▼
+                                                    [StreakService.recordInteraction(convId, senderId, receiverId)]
+                                                                     │  @Transactional(REQUIRES_NEW) — nunca propaga
+                                                                     │  una excepción hacia el envío del mensaje
+                                                                     ▼
+                                        [StreakRepository.findByConversationIdForUpdate] (PESSIMISTIC_WRITE)
+                                                                     │
+                                                                     ▼
+                                                          [StreakCalculator.apply(...)]
+                                        ├─ ambos ya escribieron hoy y ya estaba contado  → NONE
+                                        ├─ último día mutuo = ayer                        → INCREMENT (currentCount++)
+                                        ├─ gap > 1 día, o primera vez                     → RESET (currentCount = 1)
+                                        └─ solo uno de los dos escribió hoy               → NONE (solo guarda su fecha)
+                                                                     │
+                                                                     ▼
+                                        si INCREMENT/RESET → [StreakEventPublisher] → /topic/streak.{conversationId}
+
+[Cliente] ── Configuración: activar racha ──┐
+        └─► PATCH /api/streaks/{id} {enabled:true}
+                └─► [StreakService.requestActivation]
+                        ├─ sin solicitud previa → requestStatus=PENDING, publica REQUEST_SENT
+                        └─ el otro ya la pidió  → auto-acepta, enabled=true, publica REQUEST_ACCEPTED
+
+[Cliente] ── responde solicitud ──┐
+        └─► POST /api/streaks/{id}/respond {accept}
+                └─► [StreakService.respondToActivation] → ACCEPTED/DECLINED
+
+[StreakExpiryScheduler] ── @Scheduled(cron "0 5 0 * * *", zone UTC) ──┐
+        ├─ ACTIVE con último día mutuo = ayer     → AT_RISK
+        └─ ACTIVE/AT_RISK sin actividad ni ayer   → BROKEN (currentCount=0, longestCount se conserva)
+```
+
+**Componentes internos:**
+
+| Clase | Responsabilidad |
+|---|---|
+| `StreakCalculator` | Lógica pura (sin Spring/JPA) que decide INCREMENT/RESET/NONE dado el estado actual y quién escribió |
+| `StreakService` | Orquesta activación (opt-in), respuesta, desactivación y `recordInteraction` |
+| `StreakRepository` | JPA; expone `findByConversationIdForUpdate` con `PESSIMISTIC_WRITE` para atomicidad ante mensajes casi simultáneos |
+| `StreakEventPublisher` | Broadcast WebSocket a `/topic/streak.{conversationId}` vía `wsBroadcastExecutor` (mismo patrón que `MessageProducer`) |
+| `StreakExpiryScheduler` | Job diario que reclasifica `ACTIVE → AT_RISK → BROKEN` |
+| `StreakController` | `GET/PATCH /api/streaks/{conversationId}`, `POST /api/streaks/{conversationId}/respond` |
+
+**Modelo `StreakModel` — campos clave:** ver tabla `streaks` en `DATA_MODEL.md`.
+
+**Decisiones de diseño:**
+- Tópico WS dedicado (`/topic/streak.{id}`) en lugar de reutilizar `/topic/conversation.{id}` — mismo criterio que `/topic/typing.{id}` o `/topic/read.{id}`.
+- `recordInteraction` corre en transacción propia (`REQUIRES_NEW`) y captura toda excepción: un fallo en la racha nunca debe impedir que un mensaje ya guardado se devuelva al cliente.
+- `GROUP` no tiene racha — `recordInteraction` es no-op si `receiverId == null`.
+
+---
+
 ## Dependencias entre módulos
 
 ```
@@ -299,4 +360,5 @@ notifications ─────────────► config (consulta email.
 admin (users) ──────────────► users (UserRepository para ban/delete)
 config ─────────────────────► (standalone, sin dependencias de módulo)
 search ─────────────────────► users (UserRepository.searchByUsername)
+streak ─────────────────────► chat (ConversationRepository, invocado desde MessageService.sendMessage)
 ```

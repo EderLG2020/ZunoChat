@@ -13,11 +13,12 @@ public record AuthResponse(
         String username,
         String email,
         String role,
-        List<String> permissions // ej: ["dashboard:editar", "usuarios:ver"]
+        List<String> permissions, // ej: ["dashboard:editar", "usuarios:ver"]
+        String themePreference    // "LIGHT" | "DARK"
 
 ) {
     public static AuthResponse of(String token, String username, String email,
-                                  String role, List<String> permissions) {
-        return new AuthResponse(token, "Bearer", username, email, role, permissions);
+                                  String role, List<String> permissions, String themePreference) {
+        return new AuthResponse(token, "Bearer", username, email, role, permissions, themePreference);
     }
 }

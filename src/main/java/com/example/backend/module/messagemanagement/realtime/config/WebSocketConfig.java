@@ -54,7 +54,16 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         registry.addEndpoint("/ws")
                 .addInterceptors(jwtHandshakeInterceptor)
-                .setAllowedOrigins(allowedOrigins)
+                // setAllowedOriginPatterns (no setAllowedOrigins): SockJS habilita
+                // credenciales por defecto en sus transports, y Spring rechaza
+                // combinar credenciales con el valor literal "*" en allowedOrigins
+                // (tira IllegalArgumentException en CADA request de /ws/info y del
+                // polling — rompe el handshake en dev, donde "*" es intencional
+                // porque el móvil conecta desde IPs LAN que no se pueden enumerar).
+                // *Patterns sí soporta "*" con credenciales: calcula el header
+                // Access-Control-Allow-Origin dinámicamente por request en vez de
+                // devolver "*" literal.
+                .setAllowedOriginPatterns(allowedOrigins)
                 .withSockJS();   // fallback para navegadores sin soporte nativo WS
     }
 

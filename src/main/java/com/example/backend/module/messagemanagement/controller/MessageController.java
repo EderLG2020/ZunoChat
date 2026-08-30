@@ -9,9 +9,8 @@ import com.example.backend.module.messagemanagement.dto.MarkReadRequest;
 import com.example.backend.module.messagemanagement.dto.MessageCursorPage;
 import com.example.backend.module.messagemanagement.dto.MessageResponse;
 import com.example.backend.module.messagemanagement.dto.SendMessageRequest;
-import com.example.backend.module.messagemanagement.persistence.ConversationRepository;
 import com.example.backend.module.messagemanagement.realtime.messaging.IMessageProducer;
-import com.example.backend.module.messagemanagement.realtime.messaging.event.MessageEvent;
+import com.example.backend.module.messagemanagement.realtime.messaging.MessageEventFactory;
 import com.example.backend.module.messagemanagement.realtime.messaging.event.ReadReceiptBroadcastEvent;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -35,9 +34,9 @@ import java.time.LocalDateTime;
 @Validated
 public class MessageController {
 
-    @Autowired private MessageService         messageService;
-    @Autowired private IMessageProducer       messageProducer;
-    @Autowired private ConversationRepository conversationRepository;
+    @Autowired private MessageService        messageService;
+    @Autowired private IMessageProducer      messageProducer;
+    @Autowired private MessageEventFactory   messageEventFactory;
 
     @GetMapping
     public ResponseEntity<ApiResponse<MessageCursorPage>> list(
@@ -55,7 +54,7 @@ public class MessageController {
         Long userId = JwtUtil.currentUserId();
         MessageResponse result = messageService.sendMessage(userId, req);
 
-        messageProducer.publishMessage(toEvent(result, userId));
+        messageProducer.publishMessage(messageEventFactory.from(result, userId, JwtUtil.currentUsername()));
 
         return ResponseEntity
                 .status(AppCode.OK_CREATED.getHttpStatus())
@@ -87,7 +86,7 @@ public class MessageController {
         Long userId = JwtUtil.currentUserId();
         MessageResponse result = messageService.editMessage(id, userId, req.textContent());
 
-        messageProducer.publishMessageUpdate(toEvent(result, userId));
+        messageProducer.publishMessageUpdate(messageEventFactory.from(result, userId, JwtUtil.currentUsername()));
 
         return ResponseEntity.ok(ApiResponse.ok(AppCode.OK_MESSAGE_EDITED, result));
     }
@@ -97,32 +96,9 @@ public class MessageController {
         Long userId = JwtUtil.currentUserId();
         MessageResponse result = messageService.deleteMessage(id, userId);
 
-        messageProducer.publishMessageUpdate(toEvent(result, userId));
+        messageProducer.publishMessageUpdate(messageEventFactory.from(result, userId, JwtUtil.currentUsername()));
 
         return ResponseEntity.ok(ApiResponse.ok(AppCode.OK_MESSAGE_DELETED, result));
     }
 
-    // ─── Helper ───────────────────────────────────────────────────────────────
-
-    /** Arma el MessageEvent para broadcast a partir de la respuesta REST — resuelve el username del receptor sin JOIN. */
-    private MessageEvent toEvent(MessageResponse result, Long actingUserId) {
-        String actingUsername = JwtUtil.currentUsername();
-        String otherUsername = conversationRepository.findById(result.conversationId())
-                .map(conv -> conv.getUser1Id().equals(actingUserId) ? conv.getUser2Username() : conv.getUser1Username())
-                .orElse(String.valueOf(result.receiverId()));
-
-        boolean actingIsSender = result.senderId().equals(actingUserId);
-        String senderUsername = actingIsSender ? actingUsername : otherUsername;
-        String receiverUsername = actingIsSender ? otherUsername : actingUsername;
-
-        return new MessageEvent(
-                result.messageId(), result.conversationId(),
-                result.senderId(), senderUsername,
-                result.receiverId(), receiverUsername,
-                result.type(), result.textContent(),
-                result.payload(), result.payloadType(),
-                result.fileUrls(), result.status(), result.sentAt(),
-                result.deleted(), result.editedAt()
-        );
-    }
 }

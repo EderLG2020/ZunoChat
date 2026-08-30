@@ -1,0 +1,31 @@
+meta {
+  name: PATCH /admin/usuarios/{id}/activar
+  type: http
+  seq: 9
+}
+
+patch {
+  url: {{base_url}}/api/admin/usuarios/1/activar
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+docs {
+  Respuesta
+  Errores
+
+  HTTP 200
+  "Usuario activado correctamente"
+  Reemplaza {id} por el ID numérico del usuario. Ej: /admin/usuarios/42/activar
+  Reglas de rango (AdminService#assertCanModerate): nadie se activa a sí mismo,
+  nadie modera a un SUPERADMIN, y un ADMIN solo puede moderar cuentas con rol USER.
+
+  400
+  No puedes realizar esta acción sobre tu propia cuenta (USER_SELF_ACTION)
+  403
+  No tiene usuarios:activar, o intenta moderar a alguien fuera de su rango (USER_INSUFFICIENT_RANK)
+}

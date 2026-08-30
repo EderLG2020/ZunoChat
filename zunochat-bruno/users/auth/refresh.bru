@@ -1,0 +1,51 @@
+meta {
+  name: POST /auth/refresh
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{base_url}}/api/auth/refresh
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+script:post-response {
+  if (res.status === 200) {
+    bru.setVar("token", res.body.data.token);
+  }
+}
+
+docs {
+  Sin body — el token a renovar va en el header Authorization: Bearer <token>.
+  A diferencia de cualquier otro endpoint protegido, ACEPTA un token YA EXPIRADO
+  (esa es justamente su función) — JwtFilter deja pasar esta ruta sin procesarla,
+  el controller valida el token manualmente con su propia ventana de gracia.
+
+  Respuesta
+  Errores
+
+  HTTP 200
+  {
+    "token":       "eyJhbGciOiJIUzI1NiJ9... (nuevo, 24h de validez)",
+    "tokenType":   "Bearer",
+    "username":    "juan_perez",
+    "email":       "juan@example.com",
+    "role":        "USER",
+    "permissions": ["profile:ver", "profile:editar", "chat:enviar", "chat:ver"]
+  }
+  "Sesión renovada" — reemplazar el token guardado por el nuevo.
+
+  401
+  Falta el header Authorization (AUTH_TOKEN_MISSING)
+  401
+  Firma inválida o token malformado (AUTH_TOKEN_INVALID)
+  401
+  Pasaron más de 30 días desde que el token expiró — hay que loguearse de nuevo (AUTH_REFRESH_EXPIRED)
+  403
+  El usuario fue baneado o desactivado desde que se emitió el token (USER_BANNED / USER_INACTIVE)
+}

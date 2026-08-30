@@ -1,6 +1,7 @@
 package com.example.backend.module.messagemanagement.domain;
 
 import com.example.backend.common.enums.ConversationStatus;
+import com.example.backend.common.enums.ConversationType;
 import jakarta.persistence.*;
         import lombok.*;
         import org.hibernate.annotations.UpdateTimestamp;
@@ -41,20 +42,40 @@ public class ConversationModel {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // ─── Participantes ───────────────────────────────────────────────────────
+    /**
+     * DIRECT (default): user1Id/user2Id + status, muted y unreadCount por lado.
+     * GROUP: groupName/groupAvatar/createdBy; los miembros y su estado por
+     * usuario (unread, muted) viven en GroupMemberModel, no en estas columnas.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "type", nullable = false, length = 20, columnDefinition = "varchar(20) default 'DIRECT'")
+    @Builder.Default
+    private ConversationType type = ConversationType.DIRECT;
 
-    @Column(name = "user1_id", nullable = false)
+    @Column(name = "group_name", length = 100)
+    private String groupName;
+
+    @Column(name = "group_avatar", length = 500)
+    private String groupAvatar;
+
+    /** Solo GROUP: quién la creó (por ahora sin roles de admin más allá de esto). */
+    @Column(name = "created_by")
+    private Long createdBy;
+
+    // ─── Participantes (solo DIRECT — null en conversaciones GROUP) ──────────
+
+    @Column(name = "user1_id")
     private Long user1Id;
 
-    @Column(name = "user2_id", nullable = false)
+    @Column(name = "user2_id")
     private Long user2Id;
 
     // ─── Desnormalización: evita JOIN en el listado de conversaciones ─────────
 
-    @Column(name = "user1_username", nullable = false, length = 50)
+    @Column(name = "user1_username", length = 50)
     private String user1Username;
 
-    @Column(name = "user2_username", nullable = false, length = 50)
+    @Column(name = "user2_username", length = 50)
     private String user2Username;
 
     @Column(name = "user1_avatar", length = 500)
@@ -102,6 +123,19 @@ public class ConversationModel {
     @Column(name = "muted_user2", nullable = false)
     @Builder.Default
     private boolean mutedUser2 = false;
+
+    // ─── Chat temporal ────────────────────────────────────────────────────────
+
+    /**
+     * Ajuste compartido de la conversación (no por lado, a diferencia de
+     * muted/unread): cualquier participante lo puede prender/apagar y afecta
+     * a ambos, igual que "mensajes temporales" en WhatsApp. Al activarse,
+     * los mensajes NUEVOS (los ya enviados no se tocan) se autoeliminan
+     * pasado EphemeralMessageSweeper#TTL — ver esa clase.
+     */
+    @Column(name = "ephemeral_enabled", nullable = false, columnDefinition = "boolean default false")
+    @Builder.Default
+    private boolean ephemeralEnabled = false;
 
     @UpdateTimestamp
     @Column(name = "updated_at")

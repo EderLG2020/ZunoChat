@@ -9,13 +9,19 @@ import com.example.backend.module.messagemanagement.realtime.messaging.event.Rea
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
 
 /**
- * Productor directo: hace el broadcast WebSocket de forma síncrona
- * en el mismo hilo, sin pasar por ningún broker externo.
+ * Hace el broadcast WebSocket — con el broker simple (default) es en
+ * memoria del mismo JVM; con app.websocket.relay.enabled=true, cada
+ * convertAndSend depende de I/O de red hacia RabbitMQ. Todos los métodos
+ * corren en wsBroadcastExecutor (@Async) para no atar la respuesta HTTP al
+ * fan-out del broker — el caller (controller) ya construyó el evento con
+ * todos los datos que necesita, así que no hay estado de request/hilo
+ * (SecurityContext, transacción) del que este código dependa.
  */
 @Slf4j
 @Component
@@ -24,23 +30,25 @@ public class MessageProducer implements IMessageProducer {
     @Autowired
     private SimpMessagingTemplate messagingTemplate;
 
+    @Async("wsBroadcastExecutor")
     public void publishMessage(MessageEvent event) {
         log.debug("Direct broadcast MESSAGE: msgId={} convId={}", event.messageId(), event.conversationId());
 
         WsOutboundMessage outbound = toOutbound("MESSAGE_RECEIVED", event);
 
-        // Broadcast al topic de la conversación (ambos usuarios suscritos lo reciben)
+        // Broadcast al topic de la conversación (todos los suscritos lo reciben —
+        // en GROUP, cualquier cantidad de miembros con el chat abierto)
         messagingTemplate.convertAndSend("/topic/conversation." + event.conversationId(), outbound);
 
-        // ✅ Notificación al receptor (por username, que es lo que usa el Principal)
-        messagingTemplate.convertAndSendToUser(
-                event.receiverUsername(), "/queue/notifications", outbound);
-
-        // ✅ Notificación al emisor para que su sidebar actualice el último mensaje
-        messagingTemplate.convertAndSendToUser(
-                event.senderUsername(), "/queue/notifications", outbound);
+        // ✅ Notificación a cada participante para que actualice su sidebar
+        // (preview, orden, no-leídos) — [sender, receiver] en DIRECT, todos
+        // los miembros en GROUP (ver MessageEventFactory).
+        for (String username : event.notifyUsernames()) {
+            messagingTemplate.convertAndSendToUser(username, "/queue/notifications", outbound);
+        }
     }
 
+    @Async("wsBroadcastExecutor")
     public void publishMessageUpdate(MessageEvent event) {
         log.debug("Direct broadcast MESSAGE_UPDATED: msgId={} convId={} deleted={}",
                 event.messageId(), event.conversationId(), event.deleted());
@@ -70,10 +78,12 @@ public class MessageProducer implements IMessageProducer {
                 event.status(),
                 event.sentAt(),
                 event.deleted(),
-                event.editedAt()
+                event.editedAt(),
+                event.expiresAt()
         );
     }
 
+    @Async("wsBroadcastExecutor")
     public void publishReadReceipt(ReadReceiptBroadcastEvent event) {
         log.debug("Direct broadcast READ_RECEIPT: convId={} userId={}", event.conversationId(), event.readByUserId());
 
@@ -87,6 +97,7 @@ public class MessageProducer implements IMessageProducer {
         messagingTemplate.convertAndSend("/topic/read." + event.conversationId(), wsEvent);
     }
 
+    @Async("wsBroadcastExecutor")
     public void publishPresence(PresenceBroadcastEvent event) {
         log.debug("Direct broadcast PRESENCE: userId={} online={}", event.userId(), event.online());
 

@@ -19,6 +19,7 @@ public class BlockService {
 
     private final BlockedUserRepository blockedUserRepository;
     private final UserRepository userRepository;
+    private final BlockedPairCache blockedPairCache;
 
     @Transactional
     public void block(Long blockerId, Long targetId) {
@@ -31,6 +32,7 @@ public class BlockService {
             throw new AppException(AppCode.USER_ALREADY_BLOCKED);
 
         blockedUserRepository.save(BlockedUserModel.builder().blockerId(blockerId).blockedId(targetId).build());
+        blockedPairCache.invalidate(blockerId, targetId);
     }
 
     @Transactional
@@ -39,6 +41,7 @@ public class BlockService {
             throw new AppException(AppCode.USER_NOT_BLOCKED);
 
         blockedUserRepository.deleteByBlockerIdAndBlockedId(blockerId, targetId);
+        blockedPairCache.invalidate(blockerId, targetId);
     }
 
     @Transactional(readOnly = true)

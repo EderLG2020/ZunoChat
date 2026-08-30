@@ -1,0 +1,49 @@
+meta {
+  name: Editar mensaje
+  type: http
+  seq: 6
+}
+
+patch {
+  url: {{base_url}}/api/messages/1
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "textContent": "texto corregido"
+  }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
+
+docs {
+  Reemplaza el {id} en la URL por el ID numérico del mensaje.
+  Solo el autor del mensaje puede editarlo, solo mensajes de tipo TEXT, y solo
+  dentro de los primeros 15 minutos desde que se envió — todo validado en el
+  backend, no solo en el cliente.
+
+  Campo	Tipo		Regla
+  textContent	string	requerido	1–4000 caracteres
+
+  Respuesta
+  Errores
+
+  HTTP 200
+  MessageResponse actualizado, con editedAt seteado. Se re-emite por WS como
+  eventType="MESSAGE_UPDATED" al topic /topic/conversation.{id} (no toca el
+  preview de la sidebar si era el último mensaje — limitación conocida).
+
+  403
+  Solo puedes modificar tus propios mensajes (MSG_NOT_OWNER)
+  400
+  Este mensaje ya fue eliminado (MSG_ALREADY_DELETED)
+  400
+  Solo se pueden editar mensajes de texto (MSG_EDIT_NOT_TEXT)
+  400
+  Ya pasó el tiempo permitido para editar este mensaje (MSG_EDIT_WINDOW_EXPIRED)
+}

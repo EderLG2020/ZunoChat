@@ -19,6 +19,7 @@ import java.util.Optional;
 public interface UserRepository extends JpaRepository<UserModel, Long> {
 
     long countByRole(Role role);
+    List<UserModel> findByRole(Role role, Pageable pageable);
     Optional<UserModel> findByUsername(String username);
     Optional<UserModel> findByEmail(String email);
     Optional<UserModel> findByUsernameOrEmail(String username, String email);

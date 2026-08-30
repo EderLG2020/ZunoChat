@@ -25,17 +25,23 @@ import java.util.List;
  *  - Imágenes
  *
  * Índices:
- *   idx_msg_conversation  → listar mensajes de una conversación por cursor (ORDER BY id DESC)
- *   idx_msg_sender        → historial de mensajes por emisor
- *   idx_msg_status        → filtrar por estado (para marcar como visto en lote)
+ *   idx_msg_conversation    → listar mensajes de una conversación por cursor (ORDER BY id DESC)
+ *   idx_msg_sender          → historial de mensajes por emisor
+ *   idx_msg_status          → filtrar por estado (para marcar como visto en lote)
+ *   idx_msg_conv_recv_status → markAsRead filtra por los tres campos a la vez
+ *     (conversation_id + receiver_id + status <> READ); antes solo
+ *     conversation_id estaba cubierto por un índice compuesto. Impacto bajo
+ *     hoy (conversaciones 1:1 acotan mucho el scan), pero crece con el
+ *     historial de cada conversación.
  */
 @Entity
 @Table(
         name = "messages",
         indexes = {
-                @Index(name = "idx_msg_conversation", columnList = "conversation_id, id DESC"),
-                @Index(name = "idx_msg_sender",       columnList = "sender_id"),
-                @Index(name = "idx_msg_status",       columnList = "status")
+                @Index(name = "idx_msg_conversation",     columnList = "conversation_id, id DESC"),
+                @Index(name = "idx_msg_sender",           columnList = "sender_id"),
+                @Index(name = "idx_msg_status",           columnList = "status"),
+                @Index(name = "idx_msg_conv_recv_status", columnList = "conversation_id, receiver_id, status")
         }
 )
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
@@ -55,8 +61,20 @@ public class MessageModel {
     @Column(name = "sender_id", nullable = false)
     private Long senderId;
 
-    @Column(name = "receiver_id", nullable = false)
+    /** Null en mensajes de conversaciones GROUP — no hay un único receptor. */
+    @Column(name = "receiver_id")
     private Long receiverId;
+
+    /**
+     * Id generado por el cliente (UUID/random string) para reintentos
+     * idempotentes de POST /api/messages — si el cliente reintenta el mismo
+     * envío (timeout de red, doble tap) con el mismo clientMessageId,
+     * MessageService devuelve el mensaje ya creado en vez de duplicarlo.
+     * Nullable: mensajes enviados antes de este campo, o sin id de cliente,
+     * simplemente no participan en la deduplicación.
+     */
+    @Column(name = "client_message_id", unique = true, length = 64)
+    private String clientMessageId;
 
     // ─── Contenido ───────────────────────────────────────────────────────────
 
@@ -111,6 +129,13 @@ public class MessageModel {
     /** No-null solo si el mensaje fue editado (distingue "editado" de "nunca tocado"). */
     @Column(name = "edited_at")
     private LocalDateTime editedAt;
+
+    /**
+     * No-null solo si se envió con la conversación en modo "chat temporal" —
+     * EphemeralMessageSweeper lo barre y hace soft-delete pasada esa fecha.
+     */
+    @Column(name = "expires_at")
+    private LocalDateTime expiresAt;
 
     // ─── Auditoría ────────────────────────────────────────────────────────────
 

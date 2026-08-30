@@ -1,0 +1,44 @@
+meta {
+  name: POST /auth/resend-otp
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{base_url}}/api/auth/resend-otp
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "email": "nopadef851@kynninc.com"
+  }
+}
+
+docs {
+  {
+    "email": "juan@example.com"
+  }
+
+  Campo	Tipo		Regla
+  email	string	requerido	Correo de una cuenta PENDING_VERIFICATION (que no llegó a verificar el OTP a tiempo)
+
+  Body
+  Campos
+  Respuesta
+  Errores
+
+  HTTP 200
+  "Código reenviado. Revisa tu correo"
+  En dev, el nuevo OTP también llega en el correo (mismo comportamiento que register).
+
+  404
+  Usuario no encontrado
+  400
+  La cuenta ya está verificada y activa (USER_ALREADY_ACTIVE)
+  429
+  Espera un momento antes de solicitar otro código (OTP_RESEND_TOO_SOON — cooldown de 60s desde el último OTP)
+  429
+  Demasiados intentos (AUTH_RATE_LIMITED — límite de 5 reenvíos / 10 min por IP+correo)
+}

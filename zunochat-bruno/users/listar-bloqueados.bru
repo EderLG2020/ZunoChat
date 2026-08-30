@@ -1,0 +1,31 @@
+meta {
+  name: GET /users/blocked
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{base_url}}/api/users/blocked
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+docs {
+  Lista los usuarios que el usuario autenticado bloqueó (no los que lo bloquearon a él).
+
+  Respuesta
+
+  HTTP 200
+  [
+    {
+      "id": 4,
+      "username": "usuario_bloqueado",
+      "blockedAt": "2026-08-20T14:30:00"
+    }
+  ]
+  Si el usuario bloqueado fue eliminado de la cuenta, username llega como "usuario eliminado".
+}

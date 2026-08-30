@@ -13,7 +13,7 @@ public record UserSearchResponse(
         return UserSearchResponse.builder()
                 .id(u.getId())
                 .username(u.getUsername())
-                .avatar(null)
+                .avatar(u.getAvatar())
                 .build();
     }
 }

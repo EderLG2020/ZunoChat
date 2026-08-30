@@ -15,7 +15,19 @@ public record AdminUserResponse(
         UserStatus status,
         LocalDateTime createdAt
 ) {
-    public static AdminUserResponse from(UserModel u) {
-        return new AdminUserResponse(u.getId(), u.getDni(), u.getUsername(), u.getEmail(), u.getRole(), u.getStatus(), u.getCreatedAt());
+    /**
+     * El DNI completo (PII) solo se expone a SUPERADMIN — un ADMIN normal ve
+     * los últimos 4 dígitos enmascarados (****5678), suficiente para
+     * confirmar identidad en el panel sin exponer el documento completo a
+     * cualquier cuenta con rol ADMIN.
+     */
+    public static AdminUserResponse from(UserModel u, Role actorRole) {
+        String dni = actorRole == Role.SUPERADMIN ? u.getDni() : maskDni(u.getDni());
+        return new AdminUserResponse(u.getId(), dni, u.getUsername(), u.getEmail(), u.getRole(), u.getStatus(), u.getCreatedAt());
+    }
+
+    private static String maskDni(String dni) {
+        if (dni == null || dni.length() <= 4) return "****";
+        return "*".repeat(dni.length() - 4) + dni.substring(dni.length() - 4);
     }
 }

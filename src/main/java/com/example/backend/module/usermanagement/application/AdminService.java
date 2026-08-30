@@ -33,11 +33,12 @@ public class AdminService {
     private final IUserStatusCache userStatusCache;
 
     @Transactional(readOnly = true)
-    public Page<AdminUserResponse> listUsers(UserStatus status, Role role, String search, int page, int size) {
+    public Page<AdminUserResponse> listUsers(Long actorId, UserStatus status, Role role, String search, int page, int size) {
+        Role actorRole = loadUser(actorId).getRole();
         String normalizedSearch = (search == null || search.isBlank()) ? null : search.trim().toLowerCase();
         return userRepository
                 .searchForAdmin(status, role, normalizedSearch, PageRequest.of(page, size))
-                .map(AdminUserResponse::from);
+                .map(u -> AdminUserResponse.from(u, actorRole));
     }
 
     @Transactional

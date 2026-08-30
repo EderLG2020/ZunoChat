@@ -1,0 +1,42 @@
+meta {
+  name: Silenciar conversacion
+  type: http
+  seq: 8
+}
+
+patch {
+  url: {{base_url}}/api/conversations/1/mute
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "muted": true
+  }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
+
+docs {
+  Reemplaza el {id} en la URL por el ID numérico de la conversación.
+  Silencia/reactiva la conversación SOLO para el usuario autenticado (el otro
+  participante no se ve afectado). Con muted=false se reactiva.
+
+  Campo	Tipo	Regla
+  muted	boolean	requerido
+
+  Respuesta
+  Errores
+
+  HTTP 200
+  ConversationResponse actualizado, con muted reflejando el nuevo valor.
+
+  403
+  No sos participante de esta conversación (AUTH_FORBIDDEN)
+  404
+  Conversación no encontrada (CONV_NOT_FOUND)
+}

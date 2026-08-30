@@ -131,7 +131,7 @@ public class AuthService {
         // Generar JWT
         String token = jwtService.generateToken(user);
         return AuthResponse.of(token, user.getUsername(), user.getEmail(),
-                user.getRole().name(), user.getRole().getPermissions());
+                user.getRole().name(), user.getRole().getPermissions(), user.getThemePreference().name());
     }
 
     // ─── Login ───────────────────────────────────────────────────────────────
@@ -159,7 +159,7 @@ public class AuthService {
 
         String token = jwtService.generateToken(user);
         return AuthResponse.of(token, user.getUsername(), user.getEmail(),
-                user.getRole().name(), user.getRole().getPermissions());
+                user.getRole().name(), user.getRole().getPermissions(), user.getThemePreference().name());
     }
 
     // ─── Reenvío de OTP ──────────────────────────────────────────────────────
@@ -229,13 +229,23 @@ public class AuthService {
 
     // ─── Refresh token / sesión deslizante ───────────────────────────────────
 
-    /** Ventana tras la expiración en la que todavía se puede renovar sin volver a loguearse. */
-    private static final long REFRESH_GRACE_DAYS = 30;
+    /**
+     * Tope ABSOLUTO de sesión, contado desde el primer login (no desde cada
+     * renovación) — pasados estos días, hay que loguearse de nuevo sin
+     * importar cuántas veces se haya refrescado el token en el medio.
+     *
+     * Antes se medía "días desde que ESTE token expiró", y cada refresh
+     * generaba un token nuevo con su propio reloj — un token robado se podía
+     * renovar indefinidamente con solo refrescarlo una vez cada <24h, sin
+     * tope real. El claim "sessionStart" (ver JwtService#generateToken) se
+     * preserva a través de cada renovación para que este tope sea real.
+     */
+    private static final long ABSOLUTE_SESSION_DAYS = 30;
 
     /**
      * Renueva un JWT — acepta uno ya expirado, siempre que:
      *  1. la firma siga siendo válida (no fue alterado),
-     *  2. no hayan pasado más de REFRESH_GRACE_DAYS desde que expiró,
+     *  2. no hayan pasado más de ABSOLUTE_SESSION_DAYS desde el LOGIN original,
      *  3. el usuario siga activo (no baneado/inactivo/eliminado).
      *
      * JwtFilter deja pasar /api/auth/refresh sin procesar el header (ver
@@ -250,8 +260,15 @@ public class AuthService {
             throw new AppException(AppCode.AUTH_TOKEN_INVALID);
         }
 
-        Instant expiredAt = claims.getExpiration().toInstant();
-        if (Instant.now().isAfter(expiredAt.plus(REFRESH_GRACE_DAYS, ChronoUnit.DAYS)))
+        // Tokens emitidos antes de este fix no traen "sessionStart" — se usa
+        // su propio "iat" como aproximación (mismo efecto que el comportamiento
+        // viejo para esos tokens puntuales; se corrige solo a partir de acá,
+        // porque el nuevo token SÍ preserva el sessionStart para siempre).
+        Long sessionStartClaim = claims.get("sessionStart", Long.class);
+        long sessionStartMillis = sessionStartClaim != null ? sessionStartClaim : claims.getIssuedAt().getTime();
+        Instant sessionStart = Instant.ofEpochMilli(sessionStartMillis);
+
+        if (Instant.now().isAfter(sessionStart.plus(ABSOLUTE_SESSION_DAYS, ChronoUnit.DAYS)))
             throw new AppException(AppCode.AUTH_REFRESH_EXPIRED);
 
         UserModel user = userRepository.findByUsername(claims.getSubject())
@@ -260,8 +277,8 @@ public class AuthService {
         if (user.isBanned()) throw new AppException(AppCode.USER_BANNED);
         if (!user.isActive()) throw new AppException(AppCode.USER_INACTIVE);
 
-        String newToken = jwtService.generateToken(user);
+        String newToken = jwtService.generateToken(user, sessionStartMillis);
         return AuthResponse.of(newToken, user.getUsername(), user.getEmail(),
-                user.getRole().name(), user.getRole().getPermissions());
+                user.getRole().name(), user.getRole().getPermissions(), user.getThemePreference().name());
     }
 }

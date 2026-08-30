@@ -18,6 +18,7 @@ public record SendMessageRequest(
         MessageType type,
 
         /** Texto del mensaje. Requerido para type = TEXT */
+        @Size(max = 4000, message = "El texto del mensaje no puede superar los 4000 caracteres")
         String textContent,
 
         /**
@@ -34,5 +35,14 @@ public record SendMessageRequest(
          * El cliente sube los archivos primero y envía las URLs aquí.
          */
         @Size(max = 3, message = "Se permiten máximo 3 archivos por mensaje")
-        List<String> fileUrls
+        List<String> fileUrls,
+
+        /**
+         * Id opcional generado por el cliente (UUID/random string) para
+         * reintentos idempotentes — mismo clientMessageId en dos POST
+         * devuelve el mensaje ya creado en vez de duplicarlo. Opcional por
+         * compatibilidad con clientes viejos que todavía no lo mandan.
+         */
+        @Size(max = 64, message = "clientMessageId no puede superar los 64 caracteres")
+        String clientMessageId
 ) {}

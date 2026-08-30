@@ -17,6 +17,7 @@ public record MessageEvent(
         Long conversationId,
         Long senderId,
         String senderUsername,
+        /** Null en mensajes de GRUPO — no hay un único receptor (ver notifyUsernames). */
         Long receiverId,
         String receiverUsername,
         MessageType type,
@@ -27,5 +28,8 @@ public record MessageEvent(
         MessageStatus status,
         LocalDateTime sentAt,
         boolean deleted,
-        LocalDateTime editedAt
+        LocalDateTime editedAt,
+        LocalDateTime expiresAt,
+        /** A quién avisarle por /queue/notifications: [sender, receiver] en DIRECT, todos los miembros en GROUP. */
+        List<String> notifyUsernames
 ) implements Serializable {}

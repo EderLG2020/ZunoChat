@@ -74,6 +74,19 @@ public interface ConversationRepository extends JpaRepository<ConversationModel,
     void applyNewMessageFromUser2(@Param("id") Long id, @Param("preview") String preview,
                                    @Param("senderId") Long senderId, @Param("sentAt") LocalDateTime sentAt);
 
+    /** Igual que applyNewMessageFromUser1/2, pero para GROUP: una sola fila, sin lado — el
+     *  incremento de no leídos por miembro lo hace GroupMemberRepository#incrementUnreadForOthers. */
+    @Modifying(clearAutomatically = true)
+    @Query("""
+        UPDATE ConversationModel c
+        SET c.lastMessagePreview = :preview,
+            c.lastMessageSenderId = :senderId,
+            c.lastMessageAt = :sentAt
+        WHERE c.id = :id
+        """)
+    void applyNewMessageGroup(@Param("id") Long id, @Param("preview") String preview,
+                              @Param("senderId") Long senderId, @Param("sentAt") LocalDateTime sentAt);
+
     @Modifying(clearAutomatically = true)
     @Query("UPDATE ConversationModel c SET c.unreadCountUser1 = 0 WHERE c.id = :id")
     void resetUnreadUser1(@Param("id") Long id);

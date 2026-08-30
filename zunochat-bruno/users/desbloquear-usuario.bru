@@ -1,0 +1,28 @@
+meta {
+  name: DELETE /users/{id}/block
+  type: http
+  seq: 2
+}
+
+delete {
+  url: {{base_url}}/api/users/4/block
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+docs {
+  Reemplaza {id} por el ID numérico del usuario a desbloquear.
+
+  Respuesta
+  Errores
+
+  HTTP 200
+  "Usuario desbloqueado"
+
+  400
+  No has bloqueado a este usuario (USER_NOT_BLOCKED)
+}

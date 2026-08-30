@@ -21,5 +21,7 @@ public record MessageResponse(
         LocalDateTime sentAt,
         LocalDateTime readAt,
         boolean deleted,
-        LocalDateTime editedAt
+        LocalDateTime editedAt,
+        /** No-null si se envió con "chat temporal" activo — se autoelimina en esa fecha. */
+        LocalDateTime expiresAt
 ) {}

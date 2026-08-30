@@ -41,6 +41,7 @@ Estructura
 | `/topic/typing.{id}` | Indicador de escritura |
 | `/topic/read.{id}` | Confirmación de lectura |
 | `/topic/presence.{userId}` | Usuario online/offline |
+| `/topic/streak.{id}` | Cambio de racha: incremento, reinicio, `AT_RISK`/`BROKEN`, solicitud enviada/aceptada/rechazada/desactivada |
 | `/user/queue/notifications` | Notificación personal |
 
 ### Conexión
