@@ -7,11 +7,11 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import java.util.concurrent.Executor;
 
 /**
- * Pool acotado para tareas @Async (hoy: envío de correos vía Brevo).
+ * Pool acotado para tareas @Async (hoy: envío de correos vía Resend).
  *
  * Sin esto, @EnableAsync usa SimpleAsyncTaskExecutor por defecto, que crea
  * un hilo nuevo por cada llamada sin límite — un pico de registros/OTPs
- * podría abrir cientos de hilos concurrentes hacia Brevo. Con un pool
+ * podría abrir cientos de hilos concurrentes hacia Resend. Con un pool
  * acotado, el exceso simplemente espera en cola en vez de agotar recursos.
  */
 @Configuration

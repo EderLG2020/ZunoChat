@@ -15,9 +15,11 @@ import org.springframework.web.bind.annotation.*;
 import java.time.Duration;
 
 /**
- * POST /api/auth/register     → registra usuario
- * POST /api/auth/verify-otp   → verifica OTP → devuelve JWT
- * POST /api/auth/login        → login → devuelve JWT
+ * POST /api/auth/register       → registra usuario
+ * POST /api/auth/verify-otp     → verifica OTP → devuelve JWT
+ * POST /api/auth/login          → login → devuelve JWT
+ * POST /api/auth/google         → login/registro con Google (authorization code flow)
+ * POST /api/auth/google/complete → completa el alta con Google (elige username)
  *
  * La búsqueda de usuarios vive en UserController (GET /api/users/search).
  *
@@ -122,6 +124,37 @@ public class AuthController {
         enforceRateLimit(request, "reset-password", req.email(), 5, Duration.ofMinutes(10));
         authService.resetPassword(req);
         return ResponseEntity.ok(ApiResponse.ok(AppCode.OK_PASSWORD_RESET));
+    }
+
+    /**
+     * Paso 1 del login/registro con Google: recibe el authorization code
+     * obtenido en el frontend (google.accounts.oauth2.initCodeClient, modo
+     * popup) y lo intercambia server-to-server con Google.
+     * needsUsername=true → falta completar el alta con POST /google/complete.
+     */
+    @PostMapping("/google")
+    public ResponseEntity<ApiResponse<GoogleAuthResponse>> googleAuth(@Valid @RequestBody GoogleAuthRequest req,
+                                                                       HttpServletRequest request) {
+        enforceRateLimit(request, "google-auth", "code", 10, Duration.ofMinutes(5));
+        GoogleAuthResponse auth = authService.googleAuth(req);
+        return ResponseEntity
+                .status(AppCode.OK_GOOGLE_AUTH.getHttpStatus())
+                .body(ApiResponse.ok(AppCode.OK_GOOGLE_AUTH, auth));
+    }
+
+    /**
+     * Paso 2 (solo cuentas nuevas): el usuario elige su username y se crea
+     * la cuenta. Sin OTP — el email ya viene verificado por Google.
+     */
+    @PostMapping("/google/complete")
+    public ResponseEntity<ApiResponse<AuthResponse>> completeGoogleRegistration(
+            @Valid @RequestBody CompleteGoogleRegistrationRequest req,
+            HttpServletRequest request) {
+        enforceRateLimit(request, "google-register", req.username(), 10, Duration.ofMinutes(5));
+        AuthResponse auth = authService.completeGoogleRegistration(req);
+        return ResponseEntity
+                .status(AppCode.OK_REGISTER.getHttpStatus())
+                .body(ApiResponse.ok(AppCode.OK_REGISTER, auth));
     }
 
     /**

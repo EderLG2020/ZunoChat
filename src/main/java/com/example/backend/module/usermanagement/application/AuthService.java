@@ -2,14 +2,19 @@ package com.example.backend.module.usermanagement.application;
 
 import com.example.backend.common.config.domain.AppConfigServiceDomain;
 import com.example.backend.common.email.EmailService;
+import com.example.backend.common.enums.AuthProvider;
 import com.example.backend.common.enums.UserStatus;
 import com.example.backend.common.exception.AppException;
 import com.example.backend.common.response.AppCode;
+import com.example.backend.common.service.GoogleOAuthClient;
 import com.example.backend.common.service.JwtService;
 import com.example.backend.common.service.OtpService;
 import com.example.backend.module.usermanagement.domain.UserModel;
 import com.example.backend.module.usermanagement.dto.AuthResponse;
+import com.example.backend.module.usermanagement.dto.CompleteGoogleRegistrationRequest;
 import com.example.backend.module.usermanagement.dto.ForgotPasswordRequest;
+import com.example.backend.module.usermanagement.dto.GoogleAuthRequest;
+import com.example.backend.module.usermanagement.dto.GoogleAuthResponse;
 import com.example.backend.module.usermanagement.dto.LoginRequest;
 import com.example.backend.module.usermanagement.dto.RegisterRequest;
 import com.example.backend.module.usermanagement.dto.ResendOtpRequest;
@@ -40,6 +45,7 @@ public class AuthService {
     @Autowired private PasswordEncoder  passwordEncoder;
     @Autowired private EmailService     emailService;
     @Autowired private AppConfigServiceDomain appConfigService;
+    @Autowired private GoogleOAuthClient googleOAuthClient;
 
     // ─── Registro ────────────────────────────────────────────────────────────
 
@@ -50,7 +56,7 @@ public class AuthService {
      *
      *  DEV  + email.enabled=true  → intenta enviar correo; el OTP también va
      *                               en la respuesta (útil mientras no hay dominio
-     *                               verificado en Brevo).
+     *                               verificado en Resend).
      *  DEV  + email.enabled=false → OTP en la respuesta, sin intento de correo.
      *  PROD + email.enabled=true  → envía correo; la respuesta NO expone el OTP.
      *  PROD + email.enabled=false → sin correo; la respuesta NO expone el OTP.
@@ -280,5 +286,110 @@ public class AuthService {
         String newToken = jwtService.generateToken(user, sessionStartMillis);
         return AuthResponse.of(newToken, user.getUsername(), user.getEmail(),
                 user.getRole().name(), user.getRole().getPermissions(), user.getThemePreference().name());
+    }
+
+    // ─── Google OAuth (authorization code flow) ─────────────────────────────
+
+    /**
+     * Recibe el authorization code obtenido en el frontend con
+     * google.accounts.oauth2.initCodeClient y decide entre tres caminos:
+     *
+     *  1. Ya existe una cuenta vinculada a ese googleId → login normal.
+     *  2. Existe una cuenta LOCAL con el mismo email (verificado por Google)
+     *     → se vincula esa cuenta (se le asigna el googleId) y login normal.
+     *  3. No existe ninguna → no se crea el usuario todavía: se devuelve un
+     *     registrationToken de corta vida para que el frontend pida el
+     *     username y complete el alta en completeGoogleRegistration().
+     */
+    public GoogleAuthResponse googleAuth(GoogleAuthRequest req) {
+        GoogleOAuthClient.GoogleProfile profile = googleOAuthClient.exchangeCode(req.code());
+
+        if (!profile.emailVerified())
+            throw new AppException(AppCode.GOOGLE_AUTH_EMAIL_NOT_VERIFIED);
+
+        UserModel user = userRepository.findByGoogleId(profile.googleId()).orElse(null);
+
+        if (user == null) {
+            user = userRepository.findByEmail(profile.email()).orElse(null);
+
+            if (user == null) {
+                // Cuenta nueva: falta elegir username antes de crearla.
+                String registrationToken = jwtService.generateGoogleRegistrationToken(
+                        profile.googleId(), profile.email(), profile.name());
+                return GoogleAuthResponse.pendingUsername(
+                        registrationToken, profile.email(), suggestUsername(profile.email()));
+            }
+
+            if (user.getGoogleId() == null) {
+                // Cuenta LOCAL existente con el mismo email, ya verificado por
+                // Google → se vincula en vez de duplicarla. Si nunca había
+                // verificado el OTP, el email verificado por Google también
+                // activa la cuenta — no tiene sentido dejarla PENDING para
+                // siempre solo porque no completó ese paso en particular.
+                user.setGoogleId(profile.googleId());
+                if (user.isPendingVerification()) {
+                    user.setStatus(UserStatus.ACTIVE);
+                    user.setOtpCode(null);
+                    user.setOtpExpiration(null);
+                }
+                userRepository.save(user);
+            }
+        }
+
+        if (user.isBanned())
+            throw new AppException(AppCode.USER_BANNED);
+        if (user.getStatus() == UserStatus.INACTIVE)
+            throw new AppException(AppCode.USER_INACTIVE);
+
+        String token = jwtService.generateToken(user);
+        return GoogleAuthResponse.loggedIn(AuthResponse.of(token, user.getUsername(), user.getEmail(),
+                user.getRole().name(), user.getRole().getPermissions(), user.getThemePreference().name()));
+    }
+
+    /**
+     * Paso 2 del alta con Google: crea la cuenta con el username elegido.
+     * Sin OTP — el email ya viene verificado por Google. Sin dni/password —
+     * confirmado con el usuario que el alta por Google solo pide username.
+     */
+    public AuthResponse completeGoogleRegistration(CompleteGoogleRegistrationRequest req) {
+        JwtService.GoogleRegistrationClaims claims;
+        try {
+            claims = jwtService.parseGoogleRegistrationToken(req.registrationToken());
+        } catch (JwtException | IllegalArgumentException e) {
+            throw new AppException(AppCode.GOOGLE_REGISTRATION_TOKEN_INVALID);
+        }
+
+        // El registrationToken es de un solo uso implícito: si entre que se
+        // emitió y este llamado alguien más ya completó/vinculó esa cuenta
+        // (otra pestaña, doble submit), no se debe duplicar.
+        if (userRepository.findByGoogleId(claims.googleId()).isPresent()
+                || userRepository.existsByEmail(claims.email()))
+            throw new AppException(AppCode.USER_EMAIL_EXISTS);
+
+        if (userRepository.existsByUsername(req.username()))
+            throw new AppException(AppCode.USER_USERNAME_EXISTS);
+
+        UserModel user = UserModel.builder()
+                .googleId(claims.googleId())
+                .authProvider(AuthProvider.GOOGLE)
+                .username(req.username())
+                .email(claims.email())
+                .status(UserStatus.ACTIVE)
+                .build();
+
+        userRepository.save(user);
+
+        emailService.sendWelcome(user.getEmail(), user.getUsername(), null);
+
+        String token = jwtService.generateToken(user);
+        return AuthResponse.of(token, user.getUsername(), user.getEmail(),
+                user.getRole().name(), user.getRole().getPermissions(), user.getThemePreference().name());
+    }
+
+    /** Sugerencia de username a partir del local-part del email — no garantiza que esté libre. */
+    private String suggestUsername(String email) {
+        String local = email.substring(0, email.indexOf('@')).toLowerCase();
+        String cleaned = local.replaceAll("[^a-z0-9._]", "");
+        return cleaned.isBlank() ? null : cleaned;
     }
 }

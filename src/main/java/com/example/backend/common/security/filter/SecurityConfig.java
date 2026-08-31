@@ -42,7 +42,9 @@ public class SecurityConfig {
                                 "/api/auth/resend-otp",
                                 "/api/auth/forgot-password",
                                 "/api/auth/reset-password",
-                                "/api/auth/refresh"
+                                "/api/auth/refresh",
+                                "/api/auth/google",
+                                "/api/auth/google/complete"
                         ).permitAll()
 
                         // WebSocket — la autenticación se hace vía STOMP (StompAuthChannelInterceptor)

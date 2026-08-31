@@ -44,6 +44,7 @@ public enum AppCode {
     OK_CONVERSATION_UNMUTED (HttpStatus.OK,                    "Conversación reactivada"),
     OK_FILES_UPLOADED       (HttpStatus.CREATED,               "Archivo(s) subido(s) correctamente"),
     OK_THEME_UPDATED        (HttpStatus.OK,                    "Preferencia de tema actualizada"),
+    OK_GOOGLE_AUTH           (HttpStatus.OK,                   "Autenticado con Google correctamente"),
 
     // ─── Auth ─────────────────────────────────────────────────────────────────
 
@@ -54,6 +55,9 @@ public enum AppCode {
     AUTH_FORBIDDEN          (HttpStatus.FORBIDDEN,             "No tienes permisos para realizar esta acción"),
     AUTH_REFRESH_EXPIRED    (HttpStatus.UNAUTHORIZED,          "La sesión expiró hace demasiado tiempo. Vuelve a iniciar sesión"),
     AUTH_RATE_LIMITED       (HttpStatus.TOO_MANY_REQUESTS,     "Demasiados intentos. Espera unos minutos antes de volver a intentar"),
+    GOOGLE_AUTH_INVALID_CODE      (HttpStatus.UNAUTHORIZED,    "No se pudo validar la autenticación con Google. Intenta de nuevo"),
+    GOOGLE_AUTH_EMAIL_NOT_VERIFIED(HttpStatus.FORBIDDEN,       "Tu cuenta de Google no tiene el correo verificado"),
+    GOOGLE_REGISTRATION_TOKEN_INVALID(HttpStatus.UNAUTHORIZED, "La sesión de registro con Google expiró o es inválida. Vuelve a intentarlo"),
 
     // ─── Usuario ──────────────────────────────────────────────────────────────
 

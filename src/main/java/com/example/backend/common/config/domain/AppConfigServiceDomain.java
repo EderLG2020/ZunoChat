@@ -41,7 +41,7 @@ public class AppConfigServiceDomain {
                 () -> configRepository.save(AppConfigModel.builder()
                         .key(EMAIL_ENABLED_KEY)
                         .value(String.valueOf(emailEnabledDefault))
-                        .description("Activa/desactiva el envío de correos mediante Brevo")
+                        .description("Activa/desactiva el envío de correos mediante Resend")
                         .build())
         );
     }

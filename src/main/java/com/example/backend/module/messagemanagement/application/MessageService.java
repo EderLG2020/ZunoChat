@@ -281,6 +281,7 @@ public class MessageService {
         String raw = switch (req.type()) {
             case TEXT    -> req.textContent() != null ? req.textContent() : "";
             case IMAGE   -> "📷 Imagen";
+            case AUDIO   -> "🎤 Audio";
             case FILE    -> "📎 Archivo adjunto";
             case PAYLOAD -> switch (req.payloadType() != null ? req.payloadType() : PayloadType.SYSTEM) {
                 case SALES  -> "🛒 Oferta";

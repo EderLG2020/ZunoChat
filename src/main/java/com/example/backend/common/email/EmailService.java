@@ -1,14 +1,5 @@
 package com.example.backend.common.email;
 
-import brevo.ApiClient;
-import brevo.ApiException;
-import brevo.Configuration;
-import brevo.auth.ApiKeyAuth;
-import brevoApi.TransactionalEmailsApi;
-import brevoModel.CreateSmtpEmail;
-import brevoModel.SendSmtpEmail;
-import brevoModel.SendSmtpEmailSender;
-import brevoModel.SendSmtpEmailTo;
 import com.example.backend.common.config.domain.AppConfigServiceDomain;
 import com.example.backend.common.email.template.EmailTemplates;
 import com.example.backend.common.enums.EmailType;
@@ -16,20 +7,26 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.core.env.Environment;
+import org.springframework.http.MediaType;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
 import java.util.List;
+import java.util.Map;
 
 /**
- * Servicio centralizado de envío de correos electrónicos con Brevo.
+ * Servicio centralizado de envío de correos electrónicos con Resend
+ * (https://resend.com/docs/api-reference/emails/send-email).
  *
  * ─── Comportamiento según perfil y configuración ────────────────────────────
  *
- *  DEV  + email.enabled=true  → envía correo real con Brevo
+ *  DEV  + email.enabled=true  → envía correo real con Resend
  *  DEV  + email.enabled=false → NO envía; el OTP va en la respuesta API
- *  PROD + email.enabled=true  → envía correo real con Brevo
+ *  PROD + email.enabled=true  → envía correo real con Resend
  *  PROD + email.enabled=false → NO envía; NO expone datos en la respuesta API
  *
  * ─── Uso desde otros servicios ──────────────────────────────────────────────
@@ -44,27 +41,31 @@ public class EmailService {
 
     private static final Logger log = LoggerFactory.getLogger(EmailService.class);
 
+    private static final String RESEND_ENDPOINT = "https://api.resend.com/emails";
+
     @Autowired
     private AppConfigServiceDomain appConfigService;
 
     @Autowired
     private Environment environment;
 
-    @Value("${brevo.api-key}")
-    private String brevoApiKey;
+    @Value("${resend.api-key}")
+    private String resendApiKey;
 
-    @Value("${brevo.from.email}")
-    private String brevoFromEmail;
+    @Value("${resend.from.email}")
+    private String resendFromEmail;
 
-    @Value("${brevo.from.name}")
-    private String brevoFromName;
+    @Value("${resend.from.name}")
+    private String resendFromName;
+
+    private final RestClient restClient = RestClient.create();
 
     // ─── Métodos públicos por tipo de correo ─────────────────────────────────
     //
     // Todos son @Async: el caller (AuthService, etc.) no espera la respuesta
-    // de Brevo para devolver su propia respuesta HTTP. Antes, cada registro o
+    // de Resend para devolver su propia respuesta HTTP. Antes, cada registro o
     // verificación de OTP quedaba bloqueado en el hilo del request hasta que
-    // Brevo contestaba.
+    // el proveedor de correo contestaba.
 
     @Async("emailExecutor")
     public void sendOtp(String toEmail, String username, String otpCode) {
@@ -140,33 +141,26 @@ public class EmailService {
 
     private void send(String toEmail, String toName, String subject, String html, EmailType type) {
         try {
-            ApiClient client = Configuration.getDefaultApiClient();
-            ApiKeyAuth apiKey = (ApiKeyAuth) client.getAuthentication("api-key");
-            apiKey.setApiKey(brevoApiKey);
+            Map<String, Object> body = Map.of(
+                    "from", "%s <%s>".formatted(resendFromName, resendFromEmail),
+                    "to", List.of(toEmail),
+                    "subject", subject,
+                    "html", html
+            );
 
-            SendSmtpEmailSender sender = new SendSmtpEmailSender();
-            sender.setEmail(brevoFromEmail);
-            sender.setName(brevoFromName);
+            Map<String, Object> result = restClient.post()
+                    .uri(RESEND_ENDPOINT)
+                    .header("Authorization", "Bearer " + resendApiKey)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .body(new ParameterizedTypeReference<Map<String, Object>>() {});
 
-            SendSmtpEmailTo recipient = new SendSmtpEmailTo();
-            recipient.setEmail(toEmail);
-            recipient.setName(toName);
+            log.info("[EmailService] Correo [{}] enviado a {} — id: {}",
+                    type, toEmail, result != null ? result.get("id") : null);
 
-            SendSmtpEmail email = new SendSmtpEmail();
-            email.setSender(sender);
-            email.setTo(List.of(recipient));
-            email.setSubject(subject);
-            email.setHtmlContent(html);
-
-            TransactionalEmailsApi api = new TransactionalEmailsApi();
-            CreateSmtpEmail result = api.sendTransacEmail(email);
-
-            log.info("[EmailService] Correo [{}] enviado a {} — messageId: {}",
-                    type, toEmail, result.getMessageId());
-
-        } catch (ApiException e) {
-            log.warn("[EmailService] Error enviando correo [{}] a {}: {} — body: {}",
-                    type, toEmail, e.getMessage(), e.getResponseBody());
+        } catch (RestClientException e) {
+            log.warn("[EmailService] Error enviando correo [{}] a {}: {}", type, toEmail, e.getMessage());
         }
     }
 

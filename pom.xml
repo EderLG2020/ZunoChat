@@ -22,7 +22,6 @@
 
     <properties>
         <java.version>21</java.version>
-        <okhttp3.version>4.12.0</okhttp3.version>
     </properties>
 
     <dependencies>
@@ -111,38 +110,6 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- BREVO -->
-        <dependency>
-            <groupId>com.brevo</groupId>
-            <artifactId>brevo</artifactId>
-            <version>1.1.0</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>com.squareup.okhttp3</groupId>
-                    <artifactId>okhttp</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>com.squareup.okhttp3</groupId>
-                    <artifactId>logging-interceptor</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>com.squareup.okio</groupId>
-                    <artifactId>okio</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-
-        <dependency>
-            <groupId>com.squareup.okhttp3</groupId>
-            <artifactId>okhttp</artifactId>
-            <version>${okhttp3.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.squareup.okhttp3</groupId>
-            <artifactId>logging-interceptor</artifactId>
-            <version>${okhttp3.version}</version>
-        </dependency>
-
         <!-- LOMBOK -->
         <dependency>
             <groupId>org.projectlombok</groupId>
@@ -184,6 +151,19 @@
             <groupId>org.springframework.security</groupId>
             <artifactId>spring-security-test</artifactId>
             <scope>test</scope>
+        </dependency>
+
+        <!--
+          GOOGLE OAUTH — login/registro con Google (authorization code flow,
+          ver GoogleOAuthClient). Solo se usa GoogleIdTokenVerifier para
+          validar firma/issuer/audience del id_token; el intercambio
+          code→tokens se hace con RestClient (ya incluido en
+          spring-boot-starter-web), sin depender del resto de la librería.
+        -->
+        <dependency>
+            <groupId>com.google.api-client</groupId>
+            <artifactId>google-api-client</artifactId>
+            <version>2.7.0</version>
         </dependency>
 
     </dependencies>

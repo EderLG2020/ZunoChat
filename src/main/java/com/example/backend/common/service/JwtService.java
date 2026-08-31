@@ -34,6 +34,17 @@ public class JwtService {
     /** Expiración del token: 24 horas */
     private static final long EXPIRATION_MS = 86_400_000L;
 
+    /**
+     * Expiración del "registration token" de Google: el usuario ya se
+     * autenticó con Google pero todavía no eligió username (ver
+     * AuthService#googleAuth / #completeGoogleRegistration). 10 min alcanza
+     * de sobra para completar el formulario sin dejar la ventana abierta
+     * demasiado tiempo.
+     */
+    private static final long GOOGLE_REGISTRATION_EXPIRATION_MS = 10 * 60 * 1000L;
+
+    private static final String GOOGLE_REGISTRATION_PURPOSE = "GOOGLE_REGISTRATION";
+
     private final SecretKey secretKey;
 
     public JwtService(@Value("${jwt.secret}") String secret) {
@@ -68,6 +79,42 @@ public class JwtService {
                 .setExpiration(new Date(System.currentTimeMillis() + EXPIRATION_MS))
                 .signWith(secretKey, SignatureAlgorithm.HS256)
                 .compact();
+    }
+
+    /**
+     * Token corto e intransferible que representa "esta persona ya probó ser
+     * dueña de {googleId}/{email} ante Google" — no lleva rol/permissions
+     * como el JWT de sesión normal, así que JwtFilter nunca debe aceptarlo
+     * como Authorization: se valida aparte con parseGoogleRegistrationToken.
+     */
+    public String generateGoogleRegistrationToken(String googleId, String email, String name) {
+        return Jwts.builder()
+                .setSubject(googleId)
+                .claim("purpose", GOOGLE_REGISTRATION_PURPOSE)
+                .claim("email", email)
+                .claim("name", name)
+                .setIssuedAt(new Date())
+                .setExpiration(new Date(System.currentTimeMillis() + GOOGLE_REGISTRATION_EXPIRATION_MS))
+                .signWith(secretKey, SignatureAlgorithm.HS256)
+                .compact();
+    }
+
+    public record GoogleRegistrationClaims(String googleId, String email, String name) {}
+
+    /**
+     * Valida firma, expiración y que el token sea efectivamente uno de
+     * registro de Google (claim "purpose") antes de confiar en su contenido.
+     */
+    public GoogleRegistrationClaims parseGoogleRegistrationToken(String token) {
+        Claims claims = extractClaims(token);
+        if (!GOOGLE_REGISTRATION_PURPOSE.equals(claims.get("purpose", String.class)))
+            throw new io.jsonwebtoken.JwtException("Token no es de tipo GOOGLE_REGISTRATION");
+
+        return new GoogleRegistrationClaims(
+                claims.getSubject(),
+                claims.get("email", String.class),
+                claims.get("name", String.class)
+        );
     }
 
     // ─── Extracción ──────────────────────────────────────────────────────────

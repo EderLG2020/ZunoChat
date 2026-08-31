@@ -1,5 +1,6 @@
 package com.example.backend.module.usermanagement.domain;
 
+import com.example.backend.common.enums.AuthProvider;
 import com.example.backend.common.enums.Role;
 import com.example.backend.common.enums.ThemePreference;
 import com.example.backend.common.enums.UserStatus;
@@ -20,7 +21,8 @@ import java.time.LocalDateTime;
     uniqueConstraints = {
         @UniqueConstraint(name = "uk_users_username", columnNames = "username"),
         @UniqueConstraint(name = "uk_users_email",    columnNames = "email"),
-        @UniqueConstraint(name = "uk_users_dni",      columnNames = "dni")
+        @UniqueConstraint(name = "uk_users_dni",      columnNames = "dni"),
+        @UniqueConstraint(name = "uk_users_google_id", columnNames = "google_id")
     },
     indexes = {
         // Permite que la búsqueda de usuarios (prefijo) use un índice en vez de
@@ -41,7 +43,8 @@ public class UserModel {
 
     // ─── Datos de identidad ───────────────────────────────────────────────────
 
-    @Column(nullable = false, length = 20)
+    /** Obligatorio para cuentas LOCAL. Null en cuentas creadas vía Google (ver authProvider). */
+    @Column(length = 20)
     private String dni;
 
     /** Nombre de usuario único, visible públicamente */
@@ -59,15 +62,29 @@ public class UserModel {
     @Column(length = 20)
     private String phone;
 
-    /** Contraseña encriptada con BCrypt */
-    @Column(nullable = false)
+    /** Contraseña encriptada con BCrypt. Null en cuentas creadas vía Google (ver authProvider). */
     private String password;
 
-    /** URL de la foto de perfil. Nula hasta que el usuario suba una. */
+    /** URL de la foto de perfil. Nula hasta que el usuario suba una (o la que trae Google). */
     @Column(length = 500)
     private String avatar;
 
     // ─── Seguridad / Roles ───────────────────────────────────────────────────
+
+    /**
+     * Cómo se autentica: LOCAL (usuario/password + OTP) o GOOGLE (authorization
+     * code flow). columnDefinition con DEFAULT: sin esto, el ALTER TABLE que
+     * agrega la columna NOT NULL falla en filas ya existentes (mismo motivo que
+     * themePreference más abajo).
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "auth_provider", nullable = false, length = 20, columnDefinition = "varchar(20) default 'LOCAL'")
+    @Builder.Default
+    private AuthProvider authProvider = AuthProvider.LOCAL;
+
+    /** "sub" del id_token de Google. Único, null en cuentas LOCAL. */
+    @Column(name = "google_id", length = 50)
+    private String googleId;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
