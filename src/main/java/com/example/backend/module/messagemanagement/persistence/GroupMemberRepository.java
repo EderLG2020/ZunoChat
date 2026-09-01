@@ -1,5 +1,6 @@
 package com.example.backend.module.messagemanagement.persistence;
 
+import com.example.backend.common.enums.GroupRole;
 import com.example.backend.module.messagemanagement.domain.GroupMemberModel;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -36,4 +37,16 @@ public interface GroupMemberRepository extends JpaRepository<GroupMemberModel, L
         WHERE g.conversationId = :conversationId AND g.userId = :userId
         """)
     void resetUnread(@Param("conversationId") Long conversationId, @Param("userId") Long userId);
+
+    int countByConversationIdAndRole(Long conversationId, GroupRole role);
+
+    /** Sincroniza el username desnormalizado en todas las membresías del usuario — ver UserProfileService#changeUsername. */
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE GroupMemberModel g SET g.username = :username WHERE g.userId = :userId")
+    void updateUsernameForUser(@Param("userId") Long userId, @Param("username") String username);
+
+    /** Sincroniza el avatar desnormalizado en todas las membresías del usuario — ver UserProfileService#changeAvatar. */
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE GroupMemberModel g SET g.avatar = :avatar WHERE g.userId = :userId")
+    void updateAvatarForUser(@Param("userId") Long userId, @Param("avatar") String avatar);
 }

@@ -2,6 +2,7 @@ package com.example.backend.module.messagemanagement.application;
 
 import com.example.backend.common.enums.ConversationStatus;
 import com.example.backend.common.enums.ConversationType;
+import com.example.backend.common.enums.GroupRole;
 import com.example.backend.common.exception.AppException;
 import com.example.backend.common.response.AppCode;
 import com.example.backend.module.messagemanagement.domain.ConversationModel;
@@ -186,6 +187,7 @@ public class ConversationService {
                 .map(u -> GroupMemberModel.builder()
                         .conversationId(group.getId())
                         .userId(u.getId())
+                        .role(u.getId().equals(creatorId) ? GroupRole.OWNER : GroupRole.MEMBER)
                         .username(u.getUsername())
                         .avatar(u.getAvatar())
                         .build())
@@ -249,6 +251,156 @@ public class ConversationService {
 
         conv.setEphemeralEnabled(enabled);
         return toDirectResponse(conversationRepository.save(conv), currentUserId);
+    }
+
+    // ─── Gestión de miembros (roles: OWNER > ADMIN > MEMBER — ver GroupRole) ──
+
+    /** OWNER y ADMIN pueden agregar miembros. Ids ya presentes en el grupo se ignoran (no rompe el batch entero). */
+    @Transactional
+    public ConversationResponse addMembers(Long actorId, Long conversationId, List<Long> memberIds) {
+        ConversationModel group = loadGroup(conversationId);
+        GroupMemberModel actorMembership = requireMembership(conversationId, actorId);
+        requireAtLeast(actorMembership, GroupRole.ADMIN);
+
+        List<Long> toAdd = memberIds.stream()
+                .distinct()
+                .filter(id -> !groupMemberRepository.existsByConversationIdAndUserId(conversationId, id))
+                .toList();
+
+        List<GroupMemberModel> newMembers = new ArrayList<>();
+        for (Long id : toAdd) {
+            var user = userRepository.findById(id).orElseThrow(() -> new AppException(AppCode.USER_NOT_FOUND));
+            newMembers.add(GroupMemberModel.builder()
+                    .conversationId(conversationId)
+                    .userId(user.getId())
+                    .role(GroupRole.MEMBER)
+                    .username(user.getUsername())
+                    .avatar(user.getAvatar())
+                    .build());
+        }
+        groupMemberRepository.saveAll(newMembers);
+
+        return toGroupResponse(group, membersOf(conversationId), actorMembership);
+    }
+
+    /**
+     * Quita a otro miembro del grupo. OWNER puede quitar ADMIN/MEMBER; ADMIN
+     * solo puede quitar MEMBER; nadie puede quitar al OWNER por acá (tiene
+     * que transferir la propiedad primero — ver transferOwnership).
+     * Para salir uno mismo del grupo, ver leaveGroup — acá se rechaza
+     * explícitamente para no confundir "me saco a mí mismo" con "salgo".
+     */
+    @Transactional
+    public ConversationResponse removeMember(Long actorId, Long conversationId, Long targetUserId) {
+        if (actorId.equals(targetUserId))
+            throw new AppException(AppCode.GROUP_CANNOT_SELF_TARGET, "Usa el endpoint de salir del grupo para removerte a ti mismo");
+
+        ConversationModel group = loadGroup(conversationId);
+        GroupMemberModel actorMembership = requireMembership(conversationId, actorId);
+        GroupMemberModel targetMembership = requireMembership(conversationId, targetUserId);
+
+        if (targetMembership.getRole() == GroupRole.OWNER)
+            throw new AppException(AppCode.GROUP_INSUFFICIENT_RANK, "El propietario no puede ser removido — debe transferir la propiedad o salir");
+
+        requireOutranks(actorMembership, targetMembership);
+
+        groupMemberRepository.delete(targetMembership);
+        return toGroupResponse(group, membersOf(conversationId), actorMembership);
+    }
+
+    /** El usuario autenticado sale del grupo. El OWNER no puede salir sin transferir la propiedad antes. */
+    @Transactional
+    public void leaveGroup(Long userId, Long conversationId) {
+        loadGroup(conversationId);
+        GroupMemberModel membership = requireMembership(conversationId, userId);
+
+        if (membership.getRole() == GroupRole.OWNER)
+            throw new AppException(AppCode.GROUP_OWNER_MUST_TRANSFER);
+
+        groupMemberRepository.delete(membership);
+    }
+
+    /** Solo el OWNER puede promover a ADMIN o degradar a MEMBER. No se puede asignar OWNER acá — ver transferOwnership. */
+    @Transactional
+    public ConversationResponse updateMemberRole(Long actorId, Long conversationId, Long targetUserId, GroupRole newRole) {
+        if (newRole == GroupRole.OWNER)
+            throw new AppException(AppCode.GROUP_INSUFFICIENT_RANK, "La propiedad se transfiere, no se asigna como rol");
+        if (actorId.equals(targetUserId))
+            throw new AppException(AppCode.GROUP_CANNOT_SELF_TARGET);
+
+        ConversationModel group = loadGroup(conversationId);
+        GroupMemberModel actorMembership = requireMembership(conversationId, actorId);
+        if (actorMembership.getRole() != GroupRole.OWNER)
+            throw new AppException(AppCode.GROUP_INSUFFICIENT_RANK);
+
+        GroupMemberModel targetMembership = requireMembership(conversationId, targetUserId);
+        if (targetMembership.getRole() == GroupRole.OWNER)
+            throw new AppException(AppCode.GROUP_INSUFFICIENT_RANK);
+
+        targetMembership.setRole(newRole);
+        groupMemberRepository.save(targetMembership);
+
+        return toGroupResponse(group, membersOf(conversationId), actorMembership);
+    }
+
+    /** Solo el OWNER actual puede transferir. El OWNER anterior queda como ADMIN (no se lo expulsa). */
+    @Transactional
+    public ConversationResponse transferOwnership(Long actorId, Long conversationId, Long newOwnerUserId) {
+        if (actorId.equals(newOwnerUserId))
+            throw new AppException(AppCode.GROUP_CANNOT_SELF_TARGET);
+
+        ConversationModel group = loadGroup(conversationId);
+        GroupMemberModel actorMembership = requireMembership(conversationId, actorId);
+        if (actorMembership.getRole() != GroupRole.OWNER)
+            throw new AppException(AppCode.GROUP_INSUFFICIENT_RANK);
+
+        GroupMemberModel newOwnerMembership = groupMemberRepository
+                .findByConversationIdAndUserId(conversationId, newOwnerUserId)
+                .orElseThrow(() -> new AppException(AppCode.GROUP_TARGET_NOT_OWNER));
+
+        actorMembership.setRole(GroupRole.ADMIN);
+        newOwnerMembership.setRole(GroupRole.OWNER);
+        groupMemberRepository.save(actorMembership);
+        groupMemberRepository.save(newOwnerMembership);
+
+        group.setCreatedBy(newOwnerUserId);
+        conversationRepository.save(group);
+
+        return toGroupResponse(group, membersOf(conversationId), newOwnerMembership);
+    }
+
+    // ─── Helpers de membresía/rango ───────────────────────────────────────────
+
+    private ConversationModel loadGroup(Long conversationId) {
+        ConversationModel conv = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new AppException(AppCode.CONV_NOT_FOUND));
+        if (conv.getType() != ConversationType.GROUP)
+            throw new AppException(AppCode.CONV_NOT_GROUP);
+        return conv;
+    }
+
+    private GroupMemberModel requireMembership(Long conversationId, Long userId) {
+        return groupMemberRepository.findByConversationIdAndUserId(conversationId, userId)
+                .orElseThrow(() -> new AppException(AppCode.GROUP_NOT_MEMBER));
+    }
+
+    /** OWNER=2, ADMIN=1, MEMBER=0 — enum ordinal en orden de declaración (ver GroupRole), invertido: menor ordinal = más rango. */
+    private int rank(GroupRole role) {
+        return switch (role) {
+            case OWNER -> 2;
+            case ADMIN -> 1;
+            case MEMBER -> 0;
+        };
+    }
+
+    private void requireAtLeast(GroupMemberModel membership, GroupRole minimum) {
+        if (rank(membership.getRole()) < rank(minimum))
+            throw new AppException(AppCode.GROUP_INSUFFICIENT_RANK);
+    }
+
+    private void requireOutranks(GroupMemberModel actor, GroupMemberModel target) {
+        if (rank(actor.getRole()) <= rank(target.getRole()))
+            throw new AppException(AppCode.GROUP_INSUFFICIENT_RANK);
     }
 
     // ─── Mappers ──────────────────────────────────────────────────────────────

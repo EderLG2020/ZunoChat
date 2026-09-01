@@ -239,6 +239,29 @@ public final class EmailTemplates {
         return baseWrapper(body);
     }
 
+    // ─── EMAIL_CHANGE_OTP ────────────────────────────────────────────────────
+
+    /**
+     * Correo con el OTP para confirmar un cambio de email — se envía a la
+     * dirección NUEVA (prueba de propiedad), no a la actual.
+     */
+    public static String emailChangeOtp(String username, String otpCode) {
+        String body = heading("Confirma tu correo nuevo") +
+                paragraph("Hola <strong style=\"color:#f0f0f0;\">%s</strong>, recibimos una solicitud para cambiar el correo de tu cuenta a esta dirección."
+                        .formatted(username)) +
+                paragraph("Usa el siguiente código para confirmarlo. Válido por <strong style=\"color:#f0f0f0;\">10 minutos</strong>.") +
+                """
+                <div style="margin:24px 0;padding:20px;background:#0f0f0f;border-radius:12px;
+                            border:1px dashed #00c9a7;text-align:center;">
+                  <span style="font-size:40px;font-weight:800;letter-spacing:12px;color:#00c9a7;">%s</span>
+                </div>
+                """.formatted(otpCode) +
+                divider() +
+                paragraph("Si no solicitaste este cambio, ignora este correo — tu cuenta seguirá usando el correo actual.");
+
+        return baseWrapper(body);
+    }
+
     // ─── PASSWORD_RESET_CONFIRM ──────────────────────────────────────────────
 
     /**

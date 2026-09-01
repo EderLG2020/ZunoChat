@@ -94,4 +94,25 @@ public interface ConversationRepository extends JpaRepository<ConversationModel,
     @Modifying(clearAutomatically = true)
     @Query("UPDATE ConversationModel c SET c.unreadCountUser2 = 0 WHERE c.id = :id")
     void resetUnreadUser2(@Param("id") Long id);
+
+    // ─── Sincronización de datos desnormalizados (ver UserProfileService) ─────
+    // Separadas por lado porque user1Username/user2Username son columnas
+    // distintas — no hay forma de actualizar "la que corresponda" en un único
+    // UPDATE sin CASE, y user1Id/user2Id nunca es el mismo valor a la vez.
+
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE ConversationModel c SET c.user1Username = :username WHERE c.user1Id = :userId")
+    void updateUser1Username(@Param("userId") Long userId, @Param("username") String username);
+
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE ConversationModel c SET c.user2Username = :username WHERE c.user2Id = :userId")
+    void updateUser2Username(@Param("userId") Long userId, @Param("username") String username);
+
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE ConversationModel c SET c.user1Avatar = :avatar WHERE c.user1Id = :userId")
+    void updateUser1Avatar(@Param("userId") Long userId, @Param("avatar") String avatar);
+
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE ConversationModel c SET c.user2Avatar = :avatar WHERE c.user2Id = :userId")
+    void updateUser2Avatar(@Param("userId") Long userId, @Param("avatar") String avatar);
 }

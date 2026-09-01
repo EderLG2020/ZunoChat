@@ -24,7 +24,8 @@ public enum Role {
             "dashboard:editar",
             "usuarios:ver",
             "usuarios:bannear",
-            "usuarios:activar"
+            "usuarios:activar",
+            "auditoria:ver"
     )),
 
     SUPERADMIN(List.of(
@@ -42,7 +43,8 @@ public enum Role {
             "config:ver",
             "config:editar",
             "sistema:configurar",
-            "superadmin:panel"
+            "superadmin:panel",
+            "auditoria:ver"
     ));
 
     private final List<String> permissions;

@@ -6,10 +6,17 @@ import com.example.backend.common.response.ApiResponse;
 import com.example.backend.common.response.AppCode;
 import com.example.backend.common.util.JwtUtil;
 import com.example.backend.module.usermanagement.application.BlockService;
+import com.example.backend.module.usermanagement.application.UserProfileService;
 import com.example.backend.module.usermanagement.domain.UserModel;
+import com.example.backend.module.usermanagement.dto.AuthResponse;
 import com.example.backend.module.usermanagement.dto.BlockedUserResponse;
+import com.example.backend.module.usermanagement.dto.ConfirmEmailChangeRequest;
+import com.example.backend.module.usermanagement.dto.RequestEmailChangeRequest;
+import com.example.backend.module.usermanagement.dto.UpdateAvatarRequest;
+import com.example.backend.module.usermanagement.dto.UpdatePasswordRequest;
 import com.example.backend.module.usermanagement.dto.UpdatePhoneRequest;
 import com.example.backend.module.usermanagement.dto.UpdateThemeRequest;
+import com.example.backend.module.usermanagement.dto.UpdateUsernameRequest;
 import com.example.backend.module.usermanagement.dto.UserProfileResponse;
 import com.example.backend.module.usermanagement.dto.UserSearchResponse;
 import com.example.backend.module.usermanagement.persistence.UserRepository;
@@ -29,6 +36,7 @@ public class UserController {
 
     private final UserRepository userRepository;
     private final BlockService blockService;
+    private final UserProfileService userProfileService;
 
     @GetMapping("/search")
     public ResponseEntity<ApiResponse<List<UserSearchResponse>>> search(
@@ -81,6 +89,45 @@ public class UserController {
         userRepository.save(user);
 
         return ResponseEntity.ok(ApiResponse.ok(AppCode.OK_GENERIC));
+    }
+
+    /**
+     * Cambia el username del usuario autenticado — sincroniza el valor
+     * desnormalizado en conversaciones/grupos y devuelve un JWT nuevo (el
+     * anterior deja de resolver a este usuario, ver UserProfileService).
+     */
+    @PatchMapping("/me/username")
+    public ResponseEntity<ApiResponse<AuthResponse>> updateUsername(@Valid @RequestBody UpdateUsernameRequest request) {
+        AuthResponse result = userProfileService.changeUsername(JwtUtil.currentUserId(), request.username());
+        return ResponseEntity.ok(ApiResponse.ok(AppCode.OK_USERNAME_UPDATED, result));
+    }
+
+    /** Guarda (o borra, si viene vacío) el avatar del usuario autenticado — la URL ya debe venir de POST /api/uploads. */
+    @PatchMapping("/me/avatar")
+    public ResponseEntity<ApiResponse<Void>> updateAvatar(@Valid @RequestBody UpdateAvatarRequest request) {
+        userProfileService.changeAvatar(JwtUtil.currentUserId(), request.avatarUrl());
+        return ResponseEntity.ok(ApiResponse.ok(AppCode.OK_AVATAR_UPDATED));
+    }
+
+    /** Cambia la contraseña del usuario autenticado — requiere la contraseña actual (distinto del reset por OTP). */
+    @PatchMapping("/me/password")
+    public ResponseEntity<ApiResponse<Void>> updatePassword(@Valid @RequestBody UpdatePasswordRequest request) {
+        userProfileService.changePassword(JwtUtil.currentUserId(), request.currentPassword(), request.newPassword());
+        return ResponseEntity.ok(ApiResponse.ok(AppCode.OK_PASSWORD_UPDATED));
+    }
+
+    /** Paso 1 de cambiar el correo: valida la contraseña actual y envía un OTP al correo nuevo. */
+    @PostMapping("/me/email/request-change")
+    public ResponseEntity<ApiResponse<Void>> requestEmailChange(@Valid @RequestBody RequestEmailChangeRequest request) {
+        userProfileService.requestEmailChange(JwtUtil.currentUserId(), request.currentPassword(), request.newEmail());
+        return ResponseEntity.ok(ApiResponse.ok(AppCode.OK_EMAIL_CHANGE_REQUESTED));
+    }
+
+    /** Paso 2: confirma el OTP recibido en el correo nuevo y aplica el cambio. */
+    @PostMapping("/me/email/confirm-change")
+    public ResponseEntity<ApiResponse<Void>> confirmEmailChange(@Valid @RequestBody ConfirmEmailChangeRequest request) {
+        userProfileService.confirmEmailChange(JwtUtil.currentUserId(), request.otpCode());
+        return ResponseEntity.ok(ApiResponse.ok(AppCode.OK_EMAIL_UPDATED));
     }
 
     // ── Bloqueo de usuarios ─────────────────────────────────────────────────

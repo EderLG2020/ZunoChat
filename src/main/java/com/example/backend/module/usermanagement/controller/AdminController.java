@@ -5,7 +5,9 @@ import com.example.backend.common.enums.UserStatus;
 import com.example.backend.common.response.ApiResponse;
 import com.example.backend.common.response.AppCode;
 import com.example.backend.common.util.JwtUtil;
+import com.example.backend.module.usermanagement.application.AdminAuditLogService;
 import com.example.backend.module.usermanagement.application.AdminService;
+import com.example.backend.module.usermanagement.dto.AdminAuditLogResponse;
 import com.example.backend.module.usermanagement.dto.AdminUserResponse;
 import com.example.backend.module.usermanagement.dto.AssignRoleRequest;
 import com.example.backend.module.usermanagement.dto.ModerateUserRequest;
@@ -14,6 +16,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
@@ -36,6 +39,7 @@ import org.springframework.web.bind.annotation.*;
 public class AdminController {
 
     private final AdminService adminService;
+    private final AdminAuditLogService auditLogService;
 
     @GetMapping("/dashboard")
     @PreAuthorize("hasAuthority('dashboard:ver')")
@@ -83,5 +87,18 @@ public class AdminController {
     public ResponseEntity<ApiResponse<Void>> asignarRol(@PathVariable Long id, @Valid @RequestBody AssignRoleRequest req) {
         adminService.assignRole(JwtUtil.currentUserId(), id, req.role());
         return ResponseEntity.ok(ApiResponse.ok(AppCode.OK_ROLE_ASSIGNED));
+    }
+
+    /** Historial de moderación (ban/activar/eliminar/cambio de rol) — quién hizo qué y cuándo. */
+    @GetMapping("/audit-log")
+    @PreAuthorize("hasAuthority('auditoria:ver')")
+    public ResponseEntity<ApiResponse<Page<AdminAuditLogResponse>>> auditLog(
+            @RequestParam(required = false) Long targetId,
+            @RequestParam(required = false) Long actorId,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size
+    ) {
+        Page<AdminAuditLogResponse> result = auditLogService.search(targetId, actorId, PageRequest.of(page, size));
+        return ResponseEntity.ok(ApiResponse.ok(AppCode.OK_AUDIT_LOG_LISTED, result));
     }
 }

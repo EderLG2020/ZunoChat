@@ -45,6 +45,17 @@ public enum AppCode {
     OK_FILES_UPLOADED       (HttpStatus.CREATED,               "Archivo(s) subido(s) correctamente"),
     OK_THEME_UPDATED        (HttpStatus.OK,                    "Preferencia de tema actualizada"),
     OK_GOOGLE_AUTH           (HttpStatus.OK,                   "Autenticado con Google correctamente"),
+    OK_USERNAME_UPDATED     (HttpStatus.OK,                    "Nombre de usuario actualizado"),
+    OK_PASSWORD_UPDATED     (HttpStatus.OK,                    "Contraseña actualizada correctamente"),
+    OK_AVATAR_UPDATED       (HttpStatus.OK,                    "Foto de perfil actualizada"),
+    OK_EMAIL_CHANGE_REQUESTED(HttpStatus.OK,                   "Enviamos un código de verificación a tu correo nuevo"),
+    OK_EMAIL_UPDATED        (HttpStatus.OK,                    "Correo electrónico actualizado correctamente"),
+    OK_GROUP_MEMBERS_ADDED  (HttpStatus.OK,                    "Miembros agregados al grupo"),
+    OK_GROUP_MEMBER_REMOVED (HttpStatus.OK,                    "Miembro eliminado del grupo"),
+    OK_GROUP_LEFT           (HttpStatus.OK,                    "Saliste del grupo"),
+    OK_GROUP_ROLE_UPDATED   (HttpStatus.OK,                    "Rol del miembro actualizado"),
+    OK_GROUP_OWNERSHIP_TRANSFERRED(HttpStatus.OK,              "Propiedad del grupo transferida"),
+    OK_AUDIT_LOG_LISTED     (HttpStatus.OK,                    "Historial obtenido correctamente"),
 
     // ─── Auth ─────────────────────────────────────────────────────────────────
 
@@ -74,6 +85,10 @@ public enum AppCode {
     USER_ALREADY_BLOCKED    (HttpStatus.CONFLICT,              "Ya bloqueaste a este usuario"),
     USER_NOT_BLOCKED        (HttpStatus.BAD_REQUEST,           "No has bloqueado a este usuario"),
     USER_BLOCKED_CONTACT    (HttpStatus.FORBIDDEN,             "No puedes enviar mensajes a este usuario"),
+    USER_CURRENT_PASSWORD_INVALID(HttpStatus.BAD_REQUEST,      "La contraseña actual es incorrecta"),
+    USER_NO_PASSWORD_SET    (HttpStatus.BAD_REQUEST,           "Tu cuenta no tiene contraseña (inició sesión con Google) — no hay contraseña que cambiar"),
+    USER_EMAIL_SAME         (HttpStatus.BAD_REQUEST,           "Ese ya es tu correo actual"),
+    USER_EMAIL_CHANGE_NOT_REQUESTED(HttpStatus.BAD_REQUEST,    "No hay un cambio de correo en curso. Solicítalo de nuevo"),
 
     // ─── OTP ──────────────────────────────────────────────────────────────────
 
@@ -86,6 +101,13 @@ public enum AppCode {
     CONV_NOT_FOUND          (HttpStatus.NOT_FOUND,             "Conversación no encontrada"),
     CONV_SELF_CONVERSATION  (HttpStatus.BAD_REQUEST,           "No puedes iniciar una conversación contigo mismo"),
     CONV_GROUP_MIN_MEMBERS  (HttpStatus.BAD_REQUEST,           "Un grupo necesita al menos 2 miembros además de ti"),
+    CONV_NOT_GROUP          (HttpStatus.BAD_REQUEST,           "Esta operación solo aplica a conversaciones de grupo"),
+    GROUP_NOT_MEMBER        (HttpStatus.FORBIDDEN,             "No eres miembro de este grupo"),
+    GROUP_ALREADY_MEMBER    (HttpStatus.CONFLICT,              "Ese usuario ya es miembro del grupo"),
+    GROUP_INSUFFICIENT_RANK (HttpStatus.FORBIDDEN,             "No tienes rango suficiente dentro del grupo para esta acción"),
+    GROUP_OWNER_MUST_TRANSFER(HttpStatus.BAD_REQUEST,          "Debes transferir la propiedad del grupo antes de salir"),
+    GROUP_TARGET_NOT_OWNER  (HttpStatus.BAD_REQUEST,           "Solo puedes transferir la propiedad a otro miembro del grupo"),
+    GROUP_CANNOT_SELF_TARGET(HttpStatus.BAD_REQUEST,           "No puedes realizar esta acción sobre ti mismo"),
 
     // ─── Racha (streak) ───────────────────────────────────────────────────────
     STREAK_NOT_DIRECT        (HttpStatus.BAD_REQUEST,          "La racha solo aplica a conversaciones directas"),

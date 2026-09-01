@@ -58,6 +58,16 @@ public class UserModel {
     @Column(nullable = false, length = 120)
     private String email;
 
+    /**
+     * Email nuevo pendiente de confirmar (ver UserProfileService#requestEmailChange).
+     * Reutiliza otpCode/otpExpiration para el código de verificación — un
+     * usuario no puede tener un cambio de email y un registro/reset de
+     * contraseña en curso a la vez (ambos son flujos autenticados o de cuenta
+     * ya activa, no se pisan entre sí en la práctica).
+     */
+    @Column(name = "pending_email", length = 120)
+    private String pendingEmail;
+
     /** Opcional — el usuario lo carga desde Configuración; null hasta entonces. */
     @Column(length = 20)
     private String phone;

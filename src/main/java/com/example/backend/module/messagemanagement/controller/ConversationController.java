@@ -5,11 +5,14 @@ import com.example.backend.common.response.AppCode;
 
 import com.example.backend.common.util.JwtUtil;
 import com.example.backend.module.messagemanagement.application.ConversationService;
+import com.example.backend.module.messagemanagement.dto.AddGroupMembersRequest;
 import com.example.backend.module.messagemanagement.dto.ConversationResponse;
 import com.example.backend.module.messagemanagement.dto.CreateConversationRequest;
 import com.example.backend.module.messagemanagement.dto.CreateGroupRequest;
 import com.example.backend.module.messagemanagement.dto.MuteConversationRequest;
 import com.example.backend.module.messagemanagement.dto.SetEphemeralRequest;
+import com.example.backend.module.messagemanagement.dto.TransferGroupOwnershipRequest;
+import com.example.backend.module.messagemanagement.dto.UpdateGroupMemberRoleRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -89,5 +92,44 @@ public class ConversationController {
         Long userId = JwtUtil.currentUserId();
         ConversationResponse result = conversationService.setEphemeral(userId, id, req.enabled());
         return ResponseEntity.ok(ApiResponse.ok(AppCode.OK_GENERIC, result));
+    }
+
+    // ── Miembros de grupo (roles: OWNER > ADMIN > MEMBER) ──────────────────────
+
+    /** OWNER y ADMIN del grupo pueden agregar miembros. */
+    @PostMapping("/{id}/members")
+    public ResponseEntity<ApiResponse<ConversationResponse>> addMembers(@PathVariable Long id, @Valid @RequestBody AddGroupMembersRequest req) {
+        ConversationResponse result = conversationService.addMembers(JwtUtil.currentUserId(), id, req.memberIds());
+        return ResponseEntity.ok(ApiResponse.ok(AppCode.OK_GROUP_MEMBERS_ADDED, result));
+    }
+
+    /** Quita a otro miembro (OWNER puede quitar ADMIN/MEMBER, ADMIN solo MEMBER). Para salir uno mismo, ver /leave. */
+    @DeleteMapping("/{id}/members/{userId}")
+    public ResponseEntity<ApiResponse<ConversationResponse>> removeMember(@PathVariable Long id, @PathVariable Long userId) {
+        ConversationResponse result = conversationService.removeMember(JwtUtil.currentUserId(), id, userId);
+        return ResponseEntity.ok(ApiResponse.ok(AppCode.OK_GROUP_MEMBER_REMOVED, result));
+    }
+
+    /** El usuario autenticado sale del grupo. El OWNER debe transferir la propiedad antes (ver /transfer-ownership). */
+    @PostMapping("/{id}/leave")
+    public ResponseEntity<ApiResponse<Void>> leaveGroup(@PathVariable Long id) {
+        conversationService.leaveGroup(JwtUtil.currentUserId(), id);
+        return ResponseEntity.ok(ApiResponse.ok(AppCode.OK_GROUP_LEFT));
+    }
+
+    /** Solo el OWNER puede promover a ADMIN o degradar a MEMBER. */
+    @PatchMapping("/{id}/members/{userId}/role")
+    public ResponseEntity<ApiResponse<ConversationResponse>> updateMemberRole(
+            @PathVariable Long id, @PathVariable Long userId, @Valid @RequestBody UpdateGroupMemberRoleRequest req) {
+        ConversationResponse result = conversationService.updateMemberRole(JwtUtil.currentUserId(), id, userId, req.role());
+        return ResponseEntity.ok(ApiResponse.ok(AppCode.OK_GROUP_ROLE_UPDATED, result));
+    }
+
+    /** Solo el OWNER actual puede transferir la propiedad — queda como ADMIN tras transferirla. */
+    @PostMapping("/{id}/transfer-ownership")
+    public ResponseEntity<ApiResponse<ConversationResponse>> transferOwnership(
+            @PathVariable Long id, @Valid @RequestBody TransferGroupOwnershipRequest req) {
+        ConversationResponse result = conversationService.transferOwnership(JwtUtil.currentUserId(), id, req.newOwnerUserId());
+        return ResponseEntity.ok(ApiResponse.ok(AppCode.OK_GROUP_OWNERSHIP_TRANSFERRED, result));
     }
 }

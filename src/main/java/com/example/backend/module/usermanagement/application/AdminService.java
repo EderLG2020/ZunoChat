@@ -1,6 +1,7 @@
 package com.example.backend.module.usermanagement.application;
 
 import com.example.backend.common.email.EmailService;
+import com.example.backend.common.enums.AdminAuditAction;
 import com.example.backend.common.enums.Role;
 import com.example.backend.common.enums.UserStatus;
 import com.example.backend.common.exception.AppException;
@@ -31,6 +32,7 @@ public class AdminService {
     private final UserRepository userRepository;
     private final EmailService emailService;
     private final IUserStatusCache userStatusCache;
+    private final AdminAuditLogService auditLogService;
 
     @Transactional(readOnly = true)
     public Page<AdminUserResponse> listUsers(Long actorId, UserStatus status, Role role, String search, int page, int size) {
@@ -51,6 +53,7 @@ public class AdminService {
         target.setUpdatedBy(actorId);
         userRepository.save(target);
         userStatusCache.invalidate(target.getUsername());
+        auditLogService.log(actor, target, AdminAuditAction.BAN, reason);
 
         emailService.sendAccountStatusChanged(target.getEmail(), target.getUsername(), "BANNED", reason);
     }
@@ -65,6 +68,7 @@ public class AdminService {
         target.setUpdatedBy(actorId);
         userRepository.save(target);
         userStatusCache.invalidate(target.getUsername());
+        auditLogService.log(actor, target, AdminAuditAction.ACTIVATE, null);
 
         emailService.sendAccountStatusChanged(target.getEmail(), target.getUsername(), "ACTIVE", null);
     }
@@ -81,6 +85,7 @@ public class AdminService {
         target.setUpdatedBy(actorId);
         userRepository.save(target);
         userStatusCache.invalidate(target.getUsername());
+        auditLogService.log(actor, target, AdminAuditAction.DELETE, null);
     }
 
     @Transactional
@@ -98,10 +103,12 @@ public class AdminService {
         if (newRole == Role.SUPERADMIN)
             throw new AppException(AppCode.USER_INSUFFICIENT_RANK, "El rol SUPERADMIN no se puede asignar por API");
 
+        Role previousRole = target.getRole();
         target.setRole(newRole);
         target.setUpdatedBy(actorId);
         userRepository.save(target);
         userStatusCache.invalidate(target.getUsername()); // el JWT viejo trae permisos desactualizados igual, pero esto cubre el status
+        auditLogService.log(actor, target, AdminAuditAction.ROLE_CHANGE, previousRole + " → " + newRole);
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────

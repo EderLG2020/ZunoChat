@@ -1,5 +1,6 @@
 package com.example.backend.module.messagemanagement.domain;
 
+import com.example.backend.common.enums.GroupRole;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -40,6 +41,12 @@ public class GroupMemberModel {
 
     @Column(name = "user_id", nullable = false)
     private Long userId;
+
+    /** OWNER (único por grupo, el creador salvo transferencia), ADMIN o MEMBER — ver GroupRole. */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    @Builder.Default
+    private GroupRole role = GroupRole.MEMBER;
 
     @Column(name = "username", nullable = false, length = 50)
     private String username;

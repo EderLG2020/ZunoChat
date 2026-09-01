@@ -65,6 +65,24 @@
             <artifactId>spring-boot-starter-data-jpa</artifactId>
         </dependency>
 
+        <!--
+          FLYWAY — migraciones versionadas (src/main/resources/db/migration).
+          Reemplaza el uso de ddl-auto=update en dev (ver application-dev.properties,
+          ahora en `validate` como prod) y el patrón de columnDefinition con DEFAULT
+          que se usaba para poder agregar columnas NOT NULL a mano en prod sin migración
+          real (ver comentarios históricos en UserModel/ConversationModel).
+          flyway-database-postgresql es un módulo aparte desde Flyway 10 (ya no
+          viene incluido en flyway-core) — sin él, Flyway no reconoce PostgreSQL.
+        -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+        </dependency>
+
         <!-- REDIS (presencia/sesiones WS compartidas entre instancias — opcional, ver app.presence.store) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

@@ -24,5 +24,8 @@ public enum EmailType {
     ACCOUNT_STATUS_CHANGED,
 
     /** Confirmación de que la contraseña fue restablecida */
-    PASSWORD_RESET_CONFIRM
+    PASSWORD_RESET_CONFIRM,
+
+    /** OTP para confirmar un cambio de correo — se envía al correo NUEVO, no al actual */
+    EMAIL_CHANGE_OTP
 }

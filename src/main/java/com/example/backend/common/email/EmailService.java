@@ -137,6 +137,19 @@ public class EmailService {
                 EmailType.PASSWORD_RESET_CONFIRM);
     }
 
+    @Async("emailExecutor")
+    public void sendEmailChangeOtp(String toNewEmail, String username, String otpCode) {
+        if (!shouldSend()) {
+            log.info("[EmailService] email.enabled=false — OTP de cambio de email para {} no enviado. Código: {}",
+                    toNewEmail, isDev() ? otpCode : "***");
+            return;
+        }
+        send(toNewEmail, username,
+                "Confirma tu correo nuevo — ZunoChat",
+                EmailTemplates.emailChangeOtp(username, otpCode),
+                EmailType.EMAIL_CHANGE_OTP);
+    }
+
     // ─── Núcleo de envío ──────────────────────────────────────────────────────
 
     private void send(String toEmail, String toName, String subject, String html, EmailType type) {
